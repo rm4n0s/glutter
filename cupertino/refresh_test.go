@@ -652,7 +652,7 @@ func TestCupertinoSliverRefreshControlErrors(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			err := recoverError(func() { cupertino.NewCupertinoSliverRefreshControl(c.opts) })
-			requireErrorTag(t, err, "NewCupertinoSliverRefreshControl."+c.tag)
+			checkErrorTag(t, err, "NewCupertinoSliverRefreshControl."+c.tag)
 		})
 	}
 }
@@ -663,5 +663,5 @@ func TestCupertinoSliverRefreshControlDirection(t *testing.T) {
 	ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewCustomScrollView(
 		[]widgets.Widget{cupertino.NewCupertinoSliverRefreshControl(), refreshList(3)}, widgets.CustomScrollViewOpts{Reverse: true})}))
 	err := firstError(t, ts)
-	requireErrorTag(t, err, "PerformLayout.CupertinoSliverRefreshDirection")
+	checkErrorTag(t, err, "PerformLayout.CupertinoSliverRefreshDirection")
 }

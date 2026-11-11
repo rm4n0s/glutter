@@ -87,11 +87,11 @@ func TestCupertinoNavigationBar(t *testing.T) {
 		err := recoverError(func() {
 			cupertino.NewCupertinoNavigationBar(cupertino.CupertinoNavigationBarOpts{HeroTag: "tag"})
 		})
-		requireErrorTag(t, err, "NewCupertinoNavigationBar.NavigationBarHeroTagWithoutTransition")
+		checkErrorTag(t, err, "NewCupertinoNavigationBar.NavigationBarHeroTagWithoutTransition")
 		err = recoverError(func() {
 			cupertino.NewCupertinoNavigationBarLarge(cupertino.CupertinoNavigationBarOpts{HeroTag: "tag"})
 		})
-		requireErrorTag(t, err, "NewCupertinoNavigationBarLarge.NavigationBarHeroTagWithoutTransition")
+		checkErrorTag(t, err, "NewCupertinoNavigationBarLarge.NavigationBarHeroTagWithoutTransition")
 	})
 
 	t.Run("a bar that is opaque obstructs, and a translucent one does not", func(t *testing.T) {
@@ -204,11 +204,11 @@ func TestCupertinoSliverNavigationBar(t *testing.T) {
 		err := recoverError(func() {
 			cupertino.NewCupertinoSliverNavigationBar(cupertino.CupertinoSliverNavigationBarOpts{NotAutomaticallyImplyTitle: true})
 		})
-		requireErrorTag(t, err, "NewCupertinoSliverNavigationBar.NavigationBarLargeTitleRequired")
+		checkErrorTag(t, err, "NewCupertinoSliverNavigationBar.NavigationBarLargeTitleRequired")
 		err = recoverError(func() {
 			cupertino.NewCupertinoSliverNavigationBar(cupertino.CupertinoSliverNavigationBarOpts{BottomMode: cupertino.NavigationBarBottomModeAlways})
 		})
-		requireErrorTag(t, err, "NewCupertinoSliverNavigationBar.NavigationBarBottomModeWithoutBottom")
+		checkErrorTag(t, err, "NewCupertinoSliverNavigationBar.NavigationBarBottomModeWithoutBottom")
 	})
 
 	t.Run("the search bar shows the field", func(t *testing.T) {

@@ -596,7 +596,7 @@ func (s *slidingSegmentedControlState[T]) Build(bc widgets.BuildContext) widgets
 		}
 		value := entry.Value
 		enabled := !w.disabled(value)
-		var cursor services.MouseCursor = services.MouseCursorDefer
+		cursor := services.MouseCursorDefer
 		if foundation.IsWeb {
 			cursor = services.SystemMouseCursors.Click
 		}

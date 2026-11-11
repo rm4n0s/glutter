@@ -105,7 +105,7 @@ func TestCupertinoCheckbox(t *testing.T) {
 	})
 	t.Run("the error of a null value", func(t *testing.T) {
 		skipUnlessDebug(t)
-		requireErrorTag(t, recoverError(func() { cupertino.NewCupertinoCheckbox(foundation.None[bool](), nil) }), "NewCupertinoCheckbox.CupertinoCheckboxValueNull")
+		checkErrorTag(t, recoverError(func() { cupertino.NewCupertinoCheckbox(foundation.None[bool](), nil) }), "NewCupertinoCheckbox.CupertinoCheckboxValueNull")
 	})
 }
 
@@ -201,7 +201,7 @@ func TestCupertinoRadio(t *testing.T) {
 		ts := gluttertest.New(t)
 		ts.PumpWidget(centered(radio(1, cupertino.CupertinoRadioOpts[choice]{Enabled: foundation.Some(true)})))
 		err := firstError(t, ts)
-		requireErrorTag(t, err, "cupertinoRadioState[...].Build.CupertinoRadioNoRegistry")
+		checkErrorTag(t, err, "cupertinoRadioState[...].Build.CupertinoRadioNoRegistry")
 	})
 }
 
@@ -328,8 +328,8 @@ func TestCupertinoSlider(t *testing.T) {
 	})
 	t.Run("the errors of the arguments", func(t *testing.T) {
 		skipUnlessDebug(t)
-		requireErrorTag(t, recoverError(func() { cupertino.NewCupertinoSlider(2, nil) }), "NewCupertinoSlider.CupertinoSliderValueOutOfRange")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() { cupertino.NewCupertinoSlider(2, nil) }), "NewCupertinoSlider.CupertinoSliderValueOutOfRange")
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSlider(0.5, nil, cupertino.CupertinoSliderOpts{Divisions: foundation.Some(0)})
 		}), "NewCupertinoSlider.CupertinoSliderDivisionsInvalid")
 	})
@@ -373,14 +373,14 @@ func TestCupertinoActivityIndicator(t *testing.T) {
 	})
 	t.Run("the errors of the arguments", func(t *testing.T) {
 		skipUnlessDebug(t)
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoActivityIndicator(cupertino.CupertinoActivityIndicatorOpts{Radius: foundation.Some(0.0)})
 		}), "NewCupertinoActivityIndicator.CupertinoActivityIndicatorRadiusInvalid")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoActivityIndicatorPartiallyRevealed(cupertino.CupertinoActivityIndicatorPartiallyRevealedOpts{Progress: foundation.Some(2.0)})
 		}), "NewCupertinoActivityIndicatorPartiallyRevealed.CupertinoActivityIndicatorProgressInvalid")
-		requireErrorTag(t, recoverError(func() { cupertino.NewCupertinoLinearActivityIndicator(2) }), "NewCupertinoLinearActivityIndicator.CupertinoActivityIndicatorProgressInvalid")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() { cupertino.NewCupertinoLinearActivityIndicator(2) }), "NewCupertinoLinearActivityIndicator.CupertinoActivityIndicatorProgressInvalid")
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoLinearActivityIndicator(0.5, cupertino.CupertinoLinearActivityIndicatorOpts{Height: foundation.Some(0.0)})
 		}), "NewCupertinoLinearActivityIndicator.CupertinoActivityIndicatorHeightInvalid")
 	})

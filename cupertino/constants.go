@@ -11,8 +11,8 @@ import (
 // Flutter: cupertino/constants.dart kMinInteractiveDimensionCupertino
 const MinInteractiveDimensionCupertino = 44.0
 
-// The opacity, the lightness and the saturation of the outline of a focused Cupertino widget: the system
-// blue with these values.
+// CupertinoFocusColorOpacity is the opacity of the outline of a focused Cupertino widget: the system blue
+// with this opacity, CupertinoFocusColorBrightness and CupertinoFocusColorSaturation.
 //
 // Flutter: cupertino/constants.dart kCupertinoFocusColorOpacity
 const CupertinoFocusColorOpacity = 0.80

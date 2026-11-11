@@ -251,7 +251,7 @@ func TestCupertinoTabScaffoldErrors(t *testing.T) {
 				Controller: cupertino.NewCupertinoTabController(cupertino.CupertinoTabControllerOpts{InitialIndex: 2})})
 		}, "NewCupertinoTabScaffold.CupertinoTabScaffoldControllerIndexOutOfRange"},
 	} {
-		t.Run(tt.name, func(t *testing.T) { requireErrorTag(t, recoverError(tt.make), tt.tag) })
+		t.Run(tt.name, func(t *testing.T) { checkErrorTag(t, recoverError(tt.make), tt.tag) })
 	}
 
 	t.Run("a controller set past the tabs while the scaffold shows", func(t *testing.T) {
@@ -260,6 +260,6 @@ func TestCupertinoTabScaffoldErrors(t *testing.T) {
 		t.Cleanup(controller.Dispose)
 		ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: cupertino.NewCupertinoTabScaffold(bar, builder, cupertino.CupertinoTabScaffoldOpts{Controller: controller})}))
 		err := recoverError(func() { controller.SetIndex(5) })
-		requireErrorTag(t, err, "cupertinoTabScaffoldState.onCurrentIndexChange.CupertinoTabScaffoldControllerIndexOutOfRange")
+		checkErrorTag(t, err, "cupertinoTabScaffoldState.onCurrentIndexChange.CupertinoTabScaffoldControllerIndexOutOfRange")
 	})
 }

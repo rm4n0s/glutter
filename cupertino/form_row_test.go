@@ -201,8 +201,8 @@ func TestCupertinoFormSection(t *testing.T) {
 	t.Run("a section with no child is an error", func(t *testing.T) {
 		skipUnlessDebug(t)
 		err := recoverError(func() { cupertino.NewCupertinoFormSection(nil) })
-		requireErrorTag(t, err, "NewCupertinoFormSection->newFormSection.CupertinoFormSectionEmpty")
+		checkErrorTag(t, err, "NewCupertinoFormSection->newFormSection.CupertinoFormSectionEmpty")
 		err = recoverError(func() { cupertino.NewCupertinoFormSectionInsetGrouped(nil) })
-		requireErrorTag(t, err, "NewCupertinoFormSectionInsetGrouped->newFormSection.CupertinoFormSectionEmpty")
+		checkErrorTag(t, err, "NewCupertinoFormSectionInsetGrouped->newFormSection.CupertinoFormSectionEmpty")
 	})
 }

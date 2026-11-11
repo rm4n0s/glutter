@@ -58,7 +58,7 @@ func TestCupertinoDatePickerArguments(t *testing.T) {
 		{"an initial date that cannot be selected", d(cupertino.CupertinoDatePickerOpts{InitialDateTime: foundation.Some(dt(2018, 10, 10, 10, 0)),
 			SelectableDayPredicate: func(day time.Time) bool { return day.Day() != 10 }}), "CupertinoDatePickerInitialNotSelectable"},
 	} {
-		t.Run(tt.name, func(t *testing.T) { requireErrorTag(t, recoverError(tt.make), tt.tag) })
+		t.Run(tt.name, func(t *testing.T) { checkErrorTag(t, recoverError(tt.make), tt.tag) })
 	}
 	t.Run("the day of the week is fine in date mode", func(t *testing.T) {
 		if err := recoverError(d(cupertino.CupertinoDatePickerOpts{Mode: cupertino.CupertinoDatePickerModeDate, ShowDayOfWeek: true})); err != nil {
@@ -74,7 +74,7 @@ func TestCupertinoDatePickerArguments(t *testing.T) {
 		ts := dialogTester(t, ui.Size{Width: 800, Height: 600})
 		ts.PumpWidget(pickerApp(cupertino.NewCupertinoDatePicker(dateNoop, cupertino.CupertinoDatePickerOpts{Mode: cupertino.CupertinoDatePickerModeDate})))
 		ts.PumpWidget(pickerApp(cupertino.NewCupertinoDatePicker(dateNoop, cupertino.CupertinoDatePickerOpts{Mode: cupertino.CupertinoDatePickerModeDate + 1})))
-		requireErrorTag(t, firstError(t, ts), "CupertinoDatePickerModeChanged")
+		checkErrorTag(t, firstError(t, ts), "CupertinoDatePickerModeChanged")
 	})
 }
 
@@ -653,7 +653,7 @@ func TestCupertinoDatePickerSelectableDayPredicate(t *testing.T) {
 				t.Errorf("%v", err)
 			}
 		}
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoDatePicker(dateNoop, cupertino.CupertinoDatePickerOpts{InitialDateTime: foundation.Some(dt(2025, 7, 4, 0, 0)),
 				SelectableDayPredicate: func(d time.Time) bool { return d.Month() == time.June }})
 		}), "CupertinoDatePickerInitialNotSelectable")
@@ -778,7 +778,7 @@ func TestCupertinoDatePickerReportsItsErrors(t *testing.T) {
 			[]widgets.LocalizationsDelegate{cupertino.DefaultWidgetsLocalizationsDelegate, delegate},
 			cupertino.NewCupertinoDatePicker(dateNoop, cupertino.CupertinoDatePickerOpts{Mode: cupertino.CupertinoDatePickerModeDate}))))
 		ts.Pump()
-		requireErrorTag(t, firstError(t, ts), "CupertinoDatePickerColumnType")
+		checkErrorTag(t, firstError(t, ts), "CupertinoDatePickerColumnType")
 	})
 	t.Run("too narrow a space", func(t *testing.T) {
 		ts := dialogTester(t, ui.Size{Width: 800, Height: 600})

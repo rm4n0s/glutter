@@ -137,7 +137,7 @@ func TestCupertinoTabViewErrors(t *testing.T) {
 		ts.Tap(gluttertest.ByText("Home"))
 		ts.Pump()
 		err := firstError(t, ts)
-		requireErrorTag(t, err, "CupertinoTabViewUnknownRouteMissing")
+		checkErrorTag(t, err, "CupertinoTabViewUnknownRouteMissing")
 	})
 	t.Run("onUnknownRoute returns nil", func(t *testing.T) {
 		ts := gluttertest.New(t)
@@ -148,6 +148,6 @@ func TestCupertinoTabViewErrors(t *testing.T) {
 		ts.Tap(gluttertest.ByText("Home"))
 		ts.Pump()
 		err := firstError(t, ts)
-		requireErrorTag(t, err, "CupertinoTabViewUnknownRouteNil")
+		checkErrorTag(t, err, "CupertinoTabViewUnknownRouteNil")
 	})
 }

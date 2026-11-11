@@ -583,7 +583,7 @@ func TestCupertinoTextFieldAssertions(t *testing.T) {
 	} {
 		t.Run(tc.tag, func(t *testing.T) {
 			err := recoverError(func() { cupertino.NewCupertinoTextField(tc.opts) })
-			requireErrorTag(t, err, tc.tag)
+			checkErrorTag(t, err, tc.tag)
 		})
 	}
 }

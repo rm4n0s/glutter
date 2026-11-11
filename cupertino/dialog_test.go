@@ -406,7 +406,7 @@ func TestCupertinoPopupSurface(t *testing.T) {
 		err := recoverError(func() {
 			cupertino.NewCupertinoPopupSurface(nil, cupertino.CupertinoPopupSurfaceOpts{BlurSigma: foundation.Some(-1.0)})
 		})
-		requireErrorTag(t, err, "CupertinoPopupSurfaceBlurSigmaNegative")
+		checkErrorTag(t, err, "CupertinoPopupSurfaceBlurSigmaNegative")
 	})
 	t.Run("the surface has the backdrop filter and its color", func(t *testing.T) {
 		ts := dialogTester(t, ui.Size{})

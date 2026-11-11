@@ -274,7 +274,7 @@ func TestCupertinoActionSheetZeroArea(t *testing.T) {
 func TestCupertinoActionSheetEmptyRoute(t *testing.T) {
 	skipUnlessDebug(t)
 	err := recoverError(func() { cupertino.NewCupertinoActionSheet() })
-	requireErrorTag(t, err, "NewCupertinoActionSheet.CupertinoActionSheetEmpty")
+	checkErrorTag(t, err, "NewCupertinoActionSheet.CupertinoActionSheetEmpty")
 	if err := recoverError(func() {
 		cupertino.NewCupertinoActionSheet(cupertino.CupertinoActionSheetOpts{Actions: []widgets.Widget{}})
 	}); err != nil {

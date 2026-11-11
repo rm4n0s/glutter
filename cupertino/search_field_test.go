@@ -77,11 +77,11 @@ func TestCupertinoSearchTextFieldDecoration(t *testing.T) {
 		err := recoverError(func() {
 			cupertino.NewCupertinoSearchTextField(cupertino.CupertinoSearchTextFieldOpts{Decoration: d, BackgroundColor: ui.NewColor(0xFF000000)})
 		})
-		requireErrorTag(t, err, "CupertinoSearchTextFieldDecorationAndBackgroundColor")
+		checkErrorTag(t, err, "CupertinoSearchTextFieldDecorationAndBackgroundColor")
 		err = recoverError(func() {
 			cupertino.NewCupertinoSearchTextField(cupertino.CupertinoSearchTextFieldOpts{Decoration: d, BorderRadius: painting.NewBorderRadiusCircular(1)})
 		})
-		requireErrorTag(t, err, "CupertinoSearchTextFieldDecorationAndBorderRadius")
+		checkErrorTag(t, err, "CupertinoSearchTextFieldDecorationAndBorderRadius")
 	})
 }
 
@@ -408,7 +408,7 @@ func TestCupertinoSearchTextFieldFadesOnScroll(t *testing.T) {
 		if o := opacityOf(ts, xmarkIcon); !(o > 0 && o < 1) {
 			t.Errorf("the suffix has the opacity %v after a tenth of the height", o)
 		}
-		if a := alphaOf(); !(a > 0 && a < full) {
+		if a := alphaOf(); a <= 0 || a >= full {
 			t.Errorf("the placeholder has the alpha %v of %v", a, full)
 		}
 		scroll(-8 * height / 10)

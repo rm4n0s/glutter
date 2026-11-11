@@ -71,13 +71,13 @@ func TestCupertinoTimerPickerArguments(t *testing.T) {
 			cupertino.NewCupertinoTimerPicker(timerNoop, cupertino.CupertinoTimerPickerOpts{ItemExtent: -1})
 		}, "CupertinoTimerPickerItemExtentNotPositive"},
 	} {
-		t.Run(tt.name, func(t *testing.T) { requireErrorTag(t, recoverError(tt.make), tt.tag) })
+		t.Run(tt.name, func(t *testing.T) { checkErrorTag(t, recoverError(tt.make), tt.tag) })
 	}
 	t.Run("the mode cannot change", func(t *testing.T) {
 		ts := dialogTester(t, ui.Size{Width: 800, Height: 600})
 		ts.PumpWidget(pickerApp(cupertino.NewCupertinoTimerPicker(timerNoop)))
 		ts.PumpWidget(pickerApp(cupertino.NewCupertinoTimerPicker(timerNoop, cupertino.CupertinoTimerPickerOpts{Mode: cupertino.CupertinoTimerPickerModeHM})))
-		requireErrorTag(t, firstError(t, ts), "CupertinoTimerPickerModeChanged")
+		checkErrorTag(t, firstError(t, ts), "CupertinoTimerPickerModeChanged")
 	})
 }
 

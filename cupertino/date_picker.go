@@ -80,10 +80,10 @@ func columnSelectionOverlay(bc widgets.BuildContext, builder SelectionOverlayBui
 	if builder != nil {
 		return builder(bc, count, i)
 	}
-	switch {
-	case i == 0:
+	switch i {
+	case 0:
 		return startSelectionOverlay()
-	case i == count-1:
+	case count - 1:
 		return endSelectionOverlay()
 	}
 	return centerSelectionOverlay()

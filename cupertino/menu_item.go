@@ -123,10 +123,6 @@ func (w *CupertinoMenuItem) HasLeading(widgets.BuildContext) bool { return w.o.L
 // Flutter: cupertino/menu_anchor.dart CupertinoMenuItem.isDivider
 func (w *CupertinoMenuItem) IsDivider() bool { return false }
 
-func menuItemPressedColor(bc widgets.BuildContext, light, dark ui.Color, lightAlpha float64) ui.Color {
-	return CupertinoDynamicColorResolve(NewCupertinoDynamicColorWithBrightness(light, dark), bc)
-}
-
 // CupertinoMenuItemDefaultDecoration is the default background of an item for the states of it: a gray veil that is
 // darker when the item is dragged over or pressed, and lighter when it is focused or hovered. The colors are resolved
 // in the context.
@@ -362,7 +358,7 @@ func newMenuAlignMidpoint(alignment painting.AlignmentGeometry, child widgets.Wi
 func (w *menuAlignMidpoint) CreateRenderObject(bc widgets.BuildContext) rendering.RenderObject {
 	td, _ := widgets.MaybeDirectionalityOf(bc)
 	r := &renderMenuAlignMidpoint{}
-	rendering.InitRenderAligningShiftedBox(&r.RenderPositionedBox.RenderAligningShiftedBox, r, w.alignment, td, nil)
+	rendering.InitRenderAligningShiftedBox(&r.RenderAligningShiftedBox, r, w.alignment, td, nil)
 	return r
 }
 
@@ -570,7 +566,7 @@ func (s *menuItemInteractionHandlerState) buildStatefulAppearance(bc widgets.Bui
 	decoration := w.decoration.Resolve(states)
 	hasBackground := decoration.Color.IsSome() || decoration.Gradient != nil
 	blend := decoration.BackgroundBlendMode
-	if !(foundation.IsWeb || !hasBackground || blend != ui.BlendModeUnspecified) {
+	if !foundation.IsWeb && hasBackground && blend == ui.BlendModeUnspecified {
 		if brightness, ok := CupertinoThemeMaybeBrightnessOf(bc); ok && brightness == ui.BrightnessLight {
 			blend = ui.BlendModeMultiply
 		} else {

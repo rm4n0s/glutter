@@ -382,7 +382,7 @@ func TestCupertinoMenuAnchorSwipe(t *testing.T) {
 		g.Up()
 		settle(ts)
 		skipUnlessDebug(t)
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoMenuAnchor(nil, cupertino.CupertinoMenuAnchorOpts{NotEnableSwipe: true, EnableLongPressToOpen: true})
 		}), "NewCupertinoMenuAnchor.CupertinoMenuAnchorLongPressWithoutSwipe")
 	})

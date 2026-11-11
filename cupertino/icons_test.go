@@ -67,7 +67,7 @@ func TestCupertinoIconsKeepFlutterValues(t *testing.T) {
 	if icons.Heart() == icons.HeartFill() {
 		t.Error("two icons are equal")
 	}
-	if icons.Heart() != icons.Heart() {
+	if a, b := icons.Heart(), icons.Heart(); a != b {
 		t.Error("an icon is not equal to itself: IconData must be comparable")
 	}
 }

@@ -127,7 +127,7 @@ func TestCupertinoMagnifierScale(t *testing.T) {
 			err := recoverError(func() {
 				cupertino.NewCupertinoMagnifier(cupertino.CupertinoMagnifierOpts{MagnificationScale: foundation.Some(scale)})
 			})
-			requireErrorTag(t, err, "CupertinoMagnifierScaleInvalid")
+			checkErrorTag(t, err, "CupertinoMagnifierScaleInvalid")
 		}
 	})
 	t.Run("the scale defaults to 1 and is passed to the RawMagnifier", func(t *testing.T) {

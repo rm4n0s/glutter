@@ -26,7 +26,7 @@ func TestCupertinoLocalizationsAreInsideTheApp(t *testing.T) {
 			t.Errorf("message = %q", got)
 		}
 		err = recoverError(func() { cupertino.DebugCheckHasCupertinoLocalizations(outside.CurrentContext()) })
-		requireErrorTag(t, err, "DebugCheckHasCupertinoLocalizations.CupertinoLocalizationsMissing")
+		checkErrorTag(t, err, "DebugCheckHasCupertinoLocalizations.CupertinoLocalizationsMissing")
 	})
 	t.Run("the context inside the app has them", func(t *testing.T) {
 		if _, ok := cupertino.CupertinoLocalizationsMaybeOf(inside.CurrentContext()); !ok {

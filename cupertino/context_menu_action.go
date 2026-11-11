@@ -112,7 +112,7 @@ func (s *cupertinoContextMenuActionState) textStyle(bc widgets.BuildContext) *pa
 func (s *cupertinoContextMenuActionState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
 	style := s.textStyle(bc)
-	var cursor services.MouseCursor = services.MouseCursorDefer
+	cursor := services.MouseCursorDefer
 	if w.o.OnPressed != nil && foundation.IsWeb {
 		cursor = services.SystemMouseCursors.Click
 	}

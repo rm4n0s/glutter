@@ -190,6 +190,6 @@ func TestCupertinoTabBarErrors(t *testing.T) {
 			cupertino.NewCupertinoTabBar(tabItems("One", "Two"), cupertino.CupertinoTabBarOpts{Height: foundation.Some(-1.0)})
 		}, "NewCupertinoTabBar.CupertinoTabBarHeightInvalid"},
 	} {
-		t.Run(tt.name, func(t *testing.T) { requireErrorTag(t, recoverError(tt.make), tt.tag) })
+		t.Run(tt.name, func(t *testing.T) { checkErrorTag(t, recoverError(tt.make), tt.tag) })
 	}
 }

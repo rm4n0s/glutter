@@ -205,7 +205,7 @@ func TestCupertinoSpellCheckSuggestionsToolbar(t *testing.T) {
 		ts := gluttertest.New(t)
 		homeApp(ts, toolbarOf("hello", "yellow", "yell"))
 		err := recoverError(func() { toolbarOf("hello", "yellow", "yell", "yeller") })
-		requireErrorTag(t, err, "CupertinoSpellCheckSuggestionsToolbarTooManyButtons")
+		checkErrorTag(t, err, "CupertinoSpellCheckSuggestionsToolbarTooManyButtons")
 	})
 	t.Run("a toolbar of zero area does not crash", func(t *testing.T) {
 		ts := gluttertest.New(t)
@@ -298,7 +298,7 @@ func TestCupertinoSpellCheckSuggestionsToolbarButtonItems(t *testing.T) {
 			t.Skip("a read only field has no suggestions to replace")
 		}
 		err := recoverError(items[0].OnPressed)
-		requireErrorTag(t, err, "CupertinoSpellCheckSuggestionsToolbarReplaceNotAllowed")
+		checkErrorTag(t, err, "CupertinoSpellCheckSuggestionsToolbarReplaceNotAllowed")
 	})
 }
 

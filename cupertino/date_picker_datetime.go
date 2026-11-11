@@ -419,7 +419,7 @@ func (s *datePickerDateTimeState) Build(bc widgets.BuildContext) widgets.Widget 
 		totalColumnWidths += width + 2*datePickerPadSize
 		width := width
 		pickers = append(pickers, widgets.NewLayoutId(i, pickerBuilders[i](offAxisFraction, func(bc widgets.BuildContext, child widgets.Widget) widgets.Widget {
-			var contents widgets.Widget = child
+			contents := child
 			if firstColumn || lastColumn {
 				contents = widgets.NewConstrainedBox(rendering.BoxConstraints{MaxWidth: width + datePickerPadSize, MaxHeight: math.Inf(1)}, child)
 			}

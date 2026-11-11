@@ -149,7 +149,7 @@ func (s *cupertinoSliderState) emitHapticFeedback(isFastDrag bool) {
 
 func (s *cupertinoSliderState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
-	var active ui.ColorValue = CupertinoThemeOf(bc).PrimaryColor()
+	active := CupertinoThemeOf(bc).PrimaryColor()
 	if w.o.ActiveColor != nil {
 		active = w.o.ActiveColor
 	}
@@ -200,7 +200,7 @@ func (w *cupertinoSliderRenderWidget) trackColor(bc widgets.BuildContext) ui.Col
 }
 
 func (w *cupertinoSliderRenderWidget) CreateRenderObject(bc widgets.BuildContext) rendering.RenderObject {
-	var cursor services.MouseCursor = services.MouseCursorDefer
+	cursor := services.MouseCursorDefer
 	if foundation.IsWeb {
 		cursor = services.SystemMouseCursors.Click
 	}

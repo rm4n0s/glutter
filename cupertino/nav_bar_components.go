@@ -471,7 +471,7 @@ func (w *CupertinoNavigationBarBackButton) Build(bc widgets.BuildContext) widget
 		}
 	}
 	localizations := CupertinoLocalizationsOf(bc)
-	var chevron, label widgets.Widget = w.backChevron, w.backLabel
+	chevron, label := w.backChevron, w.backLabel
 	if chevron == nil {
 		chevron = newBackChevron()
 	}

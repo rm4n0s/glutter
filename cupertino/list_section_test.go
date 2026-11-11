@@ -166,6 +166,6 @@ func TestCupertinoListSection(t *testing.T) {
 	t.Run("a section with nothing in it is an error", func(t *testing.T) {
 		skipUnlessDebug(t)
 		err := recoverError(func() { cupertino.NewCupertinoListSection() })
-		requireErrorTag(t, err, "NewCupertinoListSection->newListSection.CupertinoListSectionEmpty")
+		checkErrorTag(t, err, "NewCupertinoListSection->newListSection.CupertinoListSectionEmpty")
 	})
 }

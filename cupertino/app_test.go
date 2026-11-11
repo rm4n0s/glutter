@@ -155,7 +155,7 @@ func TestCupertinoAppScrollBehavior(t *testing.T) {
 		child := widgets.NewSizedBox(nil)
 		err := recoverError(func() { behavior.BuildScrollbar(bc, child, widgets.NewScrollableDetailsVertical()) })
 		if isDesktop(behavior.GetPlatform(bc)) {
-			requireErrorTag(t, err, "CupertinoScrollbarControllerMissing")
+			checkErrorTag(t, err, "CupertinoScrollbarControllerMissing")
 		} else if err != nil {
 			t.Errorf("unexpected error %v", err)
 		}
@@ -226,7 +226,7 @@ func TestCupertinoAppDoesNotCrashAtZeroArea(t *testing.T) {
 func TestCupertinoAppRouterNeedsADelegateOrAConfig(t *testing.T) {
 	skipUnlessDebug(t)
 	err := recoverError(func() { cupertino.NewCupertinoAppRouter[int]() })
-	requireErrorTag(t, err, "CupertinoAppRouterMissing")
+	checkErrorTag(t, err, "CupertinoAppRouterMissing")
 }
 
 func isDesktop(p foundation.TargetPlatform) bool {

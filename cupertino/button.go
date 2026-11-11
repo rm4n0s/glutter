@@ -380,7 +380,7 @@ func (s *cupertinoButtonState) Build(bc widgets.BuildContext) widgets.Widget {
 	if s.isFocused {
 		states = states.With(widgets.WidgetStateFocused)
 	}
-	var cursor services.MouseCursor = services.MouseCursorDefer
+	cursor := services.MouseCursorDefer
 	if o.MouseCursor != nil {
 		cursor = widgets.WidgetStateResolveAs[services.MouseCursor](o.MouseCursor, states)
 	} else if !states.Has(widgets.WidgetStateDisabled) && foundation.IsWeb {
@@ -395,7 +395,7 @@ func (s *cupertinoButtonState) Build(bc widgets.BuildContext) widgets.Widget {
 	if o.BorderRadius.IsSome() {
 		radius = o.BorderRadius.Value()
 	}
-	var fill foundation.Opt[ui.Color] = background
+	fill := background
 	if background.IsSome() && !enabled {
 		fill = foundation.Some(CupertinoDynamicColorResolve(o.DisabledColor, bc))
 	}

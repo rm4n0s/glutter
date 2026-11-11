@@ -512,7 +512,7 @@ func TestCupertinoButtonPressedOpacityMustBeInRange(t *testing.T) {
 		err := recoverError(func() {
 			cupertino.NewCupertinoButton(nil, ahem(1), cupertino.CupertinoButtonOpts{PressedOpacity: foundation.Some(v)})
 		})
-		requireErrorTag(t, err, "newCupertinoButton.CupertinoButtonPressedOpacityInvalid")
+		checkErrorTag(t, err, "newCupertinoButton.CupertinoButtonPressedOpacityInvalid")
 	}
 }
 

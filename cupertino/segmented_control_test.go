@@ -103,13 +103,13 @@ func TestCupertinoSegmentedControl(t *testing.T) {
 	})
 	t.Run("the errors of the arguments", func(t *testing.T) {
 		skipUnlessDebug(t)
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSegmentedControl(func(string) {}, segments("A"))
 		}), "NewCupertinoSegmentedControl[...].CupertinoSegmentedControlTooFewChildren")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSegmentedControl(func(string) {}, segments("A", "A"))
 		}), "NewCupertinoSegmentedControl[...].CupertinoSegmentedControlDuplicateValue")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSegmentedControl(func(string) {}, segments("A", "B"), cupertino.CupertinoSegmentedControlOpts[string]{GroupValue: foundation.Some("Z")})
 		}), "NewCupertinoSegmentedControl[...].CupertinoSegmentedControlGroupValueNotAChild")
 	})
@@ -237,13 +237,13 @@ func TestCupertinoSlidingSegmentedControl(t *testing.T) {
 	})
 	t.Run("the errors of the arguments", func(t *testing.T) {
 		skipUnlessDebug(t)
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSlidingSegmentedControl(func(string) {}, segments("A"))
 		}), "NewCupertinoSlidingSegmentedControl[...].CupertinoSlidingSegmentedControlTooFewChildren")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSlidingSegmentedControl(func(string) {}, segments("A", "A"))
 		}), "NewCupertinoSlidingSegmentedControl[...].CupertinoSlidingSegmentedControlDuplicateValue")
-		requireErrorTag(t, recoverError(func() {
+		checkErrorTag(t, recoverError(func() {
 			cupertino.NewCupertinoSlidingSegmentedControl(func(string) {}, segments("A", "B"),
 				cupertino.CupertinoSlidingSegmentedControlOpts[string]{GroupValue: foundation.Some("Z")})
 		}), "NewCupertinoSlidingSegmentedControl[...].CupertinoSlidingSegmentedControlGroupValueNotAChild")

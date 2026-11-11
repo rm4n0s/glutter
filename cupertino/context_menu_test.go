@@ -442,6 +442,6 @@ func TestCupertinoContextMenuAction(t *testing.T) {
 
 func TestCupertinoContextMenuNoActionsRoute(t *testing.T) {
 	skipUnlessDebug(t)
-	requireErrorTag(t, recoverError(func() { cupertino.NewCupertinoContextMenu(nil, menuChild()) }), "NewCupertinoContextMenu.CupertinoContextMenuNoActions")
-	requireErrorTag(t, recoverError(func() { cupertino.NewCupertinoContextMenuBuilder(nil, nil) }), "NewCupertinoContextMenuBuilder.CupertinoContextMenuNoActions")
+	checkErrorTag(t, recoverError(func() { cupertino.NewCupertinoContextMenu(nil, menuChild()) }), "NewCupertinoContextMenu.CupertinoContextMenuNoActions")
+	checkErrorTag(t, recoverError(func() { cupertino.NewCupertinoContextMenuBuilder(nil, nil) }), "NewCupertinoContextMenuBuilder.CupertinoContextMenuNoActions")
 }

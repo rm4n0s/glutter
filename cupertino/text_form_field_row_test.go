@@ -223,6 +223,6 @@ func TestCupertinoTextFormFieldRow(t *testing.T) {
 		err := recoverError(func() {
 			cupertino.NewCupertinoTextFormFieldRow(cupertino.CupertinoTextFormFieldRowOpts{Controller: c, InitialValue: str("x")})
 		})
-		requireErrorTag(t, err, "NewCupertinoTextFormFieldRow.CupertinoTextFormFieldRowInitialValueWithController")
+		checkErrorTag(t, err, "NewCupertinoTextFormFieldRow.CupertinoTextFormFieldRowInitialValueWithController")
 	})
 }

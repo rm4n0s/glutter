@@ -178,6 +178,6 @@ func TestCupertinoNavigationBarBackButton(t *testing.T) {
 		skipUnlessDebug(t)
 		ts := gluttertest.New(t)
 		ts.PumpWidget(testApp(cupertino.CupertinoAppOpts{Home: widgets.NewCenter(cupertino.NewCupertinoNavigationBarBackButton())}))
-		requireErrorTag(t, firstError(t, ts), "CupertinoNavigationBarBackButton.Build.NavigationBarBackButtonNotPoppable")
+		checkErrorTag(t, firstError(t, ts), "CupertinoNavigationBarBackButton.Build.NavigationBarBackButtonNotPoppable")
 	})
 }

@@ -222,10 +222,10 @@ func TestCupertinoSwitch(t *testing.T) {
 
 func TestCupertinoSwitchErrors(t *testing.T) {
 	skipUnlessDebug(t)
-	requireErrorTag(t, recoverError(func() {
+	checkErrorTag(t, recoverError(func() {
 		cupertino.NewCupertinoSwitch(true, nil, cupertino.CupertinoSwitchOpts{OnActiveThumbImageError: func(error) {}})
 	}), "NewCupertinoSwitch.CupertinoSwitchActiveThumbImageErrorWithoutImage")
-	requireErrorTag(t, recoverError(func() {
+	checkErrorTag(t, recoverError(func() {
 		cupertino.NewCupertinoSwitch(true, nil, cupertino.CupertinoSwitchOpts{OnInactiveThumbImageError: func(error) {}})
 	}), "NewCupertinoSwitch.CupertinoSwitchInactiveThumbImageErrorWithoutImage")
 }

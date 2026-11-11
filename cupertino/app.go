@@ -245,7 +245,7 @@ func (s *cupertinoAppState) Dispose() { s.heroController.Dispose() }
 func (s *cupertinoAppState) buildWidgetApp(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
 	theme := CupertinoThemeOf(bc)
-	var color ui.ColorValue = theme.PrimaryColor()
+	color := theme.PrimaryColor()
 	if w.color != nil {
 		color = w.color
 	}

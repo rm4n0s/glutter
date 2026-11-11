@@ -174,7 +174,7 @@ func (s *cupertinoExpansionTileState) buildHeader(bc widgets.BuildContext, a ani
 
 func (s *cupertinoExpansionTileState) buildExpansible(bc widgets.BuildContext, header, body widgets.Widget, a animation.Animation[float64]) widgets.Widget {
 	w := s.Widget()
-	var second widgets.Widget = body
+	second := body
 	if animation.IsAnimating(a) && w.o.TransitionMode == ExpansionTileTransitionModeFade {
 		second = widgets.NewOpacity(0.0, body)
 	}

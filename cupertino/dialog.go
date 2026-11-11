@@ -337,6 +337,11 @@ func (w *CupertinoPopupSurface) buildFilter(brightness ui.Brightness, hasBrightn
 	return ui.NewImageFilterCompose(ui.NewImageFilterBlur(ui.ImageFilterBlurOpts{SigmaX: w.BlurSigma(), SigmaY: w.BlurSigma()}), colorFilter)
 }
 
+// Build makes the surface: the child on the color of a dialog when the surface is painted, over a backdrop filter
+// that blurs and saturates what is behind it (none when the user asked for less transparency), clipped to a rounded
+// superellipse.
+//
+// Flutter: cupertino/dialog.dart CupertinoPopupSurface.build
 func (w *CupertinoPopupSurface) Build(bc widgets.BuildContext) widgets.Widget {
 	brightness, ok := CupertinoThemeMaybeBrightnessOf(bc)
 	filter := w.buildFilter(brightness, ok)
@@ -630,7 +635,7 @@ func (s *cupertinoDialogActionState) buildContentWithRegularSizingPolicy(bc widg
 
 func (s *cupertinoDialogActionState) Build(bc widgets.BuildContext) widgets.Widget {
 	w := s.Widget()
-	var base ui.ColorValue = CupertinoThemeOf(bc).PrimaryColor()
+	base := CupertinoThemeOf(bc).PrimaryColor()
 	if w.o.IsDestructiveAction {
 		base = CupertinoColors.SystemRed
 	}

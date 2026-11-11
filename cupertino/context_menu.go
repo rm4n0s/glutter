@@ -333,7 +333,7 @@ func (s *cupertinoContextMenuState) onTapDown(gestures.TapDownDetails) {
 //
 // Flutter: cupertino/context_menu.dart _CupertinoContextMenuState.build
 func (s *cupertinoContextMenuState) Build(bc widgets.BuildContext) widgets.Widget {
-	var cursor services.MouseCursor = services.MouseCursorDefer
+	cursor := services.MouseCursorDefer
 	if foundation.IsWeb {
 		cursor = services.SystemMouseCursors.Click
 	}

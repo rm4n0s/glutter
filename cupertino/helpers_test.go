@@ -35,6 +35,12 @@ func requireErrorTag(t *testing.T, err error, tag string) *errors.Error {
 	return appErr
 }
 
+// checkErrorTag is requireErrorTag for a test that does not look at the error further.
+func checkErrorTag(t *testing.T, err error, tag string) {
+	t.Helper()
+	_ = requireErrorTag(t, err, tag)
+}
+
 // firstError is the first error that the framework reported while the tester ran.
 func firstError(t *testing.T, ts *gluttertest.Tester) error {
 	t.Helper()

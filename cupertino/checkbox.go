@@ -339,7 +339,7 @@ func (p *cupertinoCheckboxPainter) drawFillGradient(canvas *ui.Canvas, outer ui.
 }
 
 func (p *cupertinoCheckboxPainter) drawBox(canvas *ui.Canvas, outer ui.Rect, paint *ui.Paint, side painting.BorderSide, value bool) {
-	if p.v.brightness == ui.BrightnessDark && !(p.v.isActive && value) {
+	if p.v.brightness == ui.BrightnessDark && (!p.v.isActive || !value) {
 		opacities := checkboxDisabledDarkGradientOpacities
 		if p.v.isActive {
 			opacities = checkboxDarkGradientOpacities

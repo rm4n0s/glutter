@@ -394,5 +394,5 @@ func TestCupertinoRoutePreviousTitleBeforeInstall(t *testing.T) {
 	route := cupertino.NewCupertinoPageRoute(func(widgets.BuildContext) widgets.Widget { return widgets.NewSizedBox(nil) })
 	defer route.Dispose()
 	err := recoverError(func() { route.PreviousTitle() })
-	requireErrorTag(t, err, "CupertinoRouteBase.PreviousTitle.CupertinoRoutePreviousTitleBeforeInstall")
+	checkErrorTag(t, err, "CupertinoRouteBase.PreviousTitle.CupertinoRoutePreviousTitleBeforeInstall")
 }

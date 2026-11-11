@@ -221,7 +221,7 @@ func TestCupertinoScrollbarThicknessMustBeFinite(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := recoverError(func() { cupertino.NewCupertinoScrollbar(widgets.NewSizedBox(nil), opts) })
-			requireErrorTag(t, err, "NewCupertinoScrollbar.CupertinoScrollbarThicknessInfinite")
+			checkErrorTag(t, err, "NewCupertinoScrollbar.CupertinoScrollbarThicknessInfinite")
 		})
 	}
 }

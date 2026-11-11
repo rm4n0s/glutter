@@ -474,14 +474,14 @@ func TestCupertinoSheetTopGap(t *testing.T) {
 			err := recoverError(func() {
 				cupertino.NewCupertinoSheetRoute(cupertino.CupertinoSheetRouteOpts{Builder: func(widgets.BuildContext) widgets.Widget { return widgets.NewSizedBox(nil) }, TopGap: foundation.Some(gap)})
 			})
-			requireErrorTag(t, err, "NewCupertinoSheetRoute.CupertinoSheetTopGapOutOfRange")
+			checkErrorTag(t, err, "NewCupertinoSheetRoute.CupertinoSheetTopGapOutOfRange")
 		}
 	})
 
 	t.Run("a sheet with no builder panics", func(t *testing.T) {
 		skipUnlessDebug(t)
 		err := recoverError(func() { cupertino.NewCupertinoSheetRoute() })
-		requireErrorTag(t, err, "NewCupertinoSheetRoute.CupertinoSheetBuilderMissing")
+		checkErrorTag(t, err, "NewCupertinoSheetRoute.CupertinoSheetBuilderMissing")
 	})
 }
 
@@ -493,9 +493,9 @@ func TestShowCupertinoSheetErrors(t *testing.T) {
 	err := recoverError(func() {
 		cupertino.ShowCupertinoSheet(bc, cupertino.ShowCupertinoSheetOpts{TopGap: foundation.Some(1.0), Builder: func(widgets.BuildContext) widgets.Widget { return nil }})
 	})
-	requireErrorTag(t, err, "ShowCupertinoSheet.CupertinoSheetTopGapOutOfRange")
+	checkErrorTag(t, err, "ShowCupertinoSheet.CupertinoSheetTopGapOutOfRange")
 	err = recoverError(func() { cupertino.ShowCupertinoSheet(bc, cupertino.ShowCupertinoSheetOpts{}) })
-	requireErrorTag(t, err, "ShowCupertinoSheet.CupertinoSheetBuilderMissing")
+	checkErrorTag(t, err, "ShowCupertinoSheet.CupertinoSheetBuilderMissing")
 }
 
 func TestCupertinoSheetNestedNavigation(t *testing.T) {

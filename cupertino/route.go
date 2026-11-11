@@ -495,7 +495,7 @@ func (s *cupertinoPageTransitionState) disposeCurve() {
 
 func (s *cupertinoPageTransitionState) setupAnimation() {
 	w := s.Widget()
-	var primary, secondary, shadow animation.Animation[float64] = w.primaryRouteAnimation, w.secondaryRouteAnimation, w.primaryRouteAnimation
+	primary, secondary, shadow := w.primaryRouteAnimation, w.secondaryRouteAnimation, w.primaryRouteAnimation
 	if !w.linearTransition {
 		s.primaryPositionCurve = animation.NewCurvedAnimation(w.primaryRouteAnimation, animation.Curves.FastEaseInToSlowEaseOut, animation.Curves.FastEaseInToSlowEaseOut.Flipped())
 		s.secondaryPositionCurve = animation.NewCurvedAnimation(w.secondaryRouteAnimation, animation.Curves.LinearToEaseOut, animation.Curves.EaseInToLinear)
@@ -579,7 +579,7 @@ func (s *cupertinoFullscreenDialogTransitionState) setupAnimation() {
 	w := s.Widget()
 	s.primaryPositionCurve = animation.NewCurvedAnimation(w.primaryRouteAnimation, animation.Curves.LinearToEaseOut, animation.Curves.LinearToEaseOut.Flipped())
 	s.primaryPosition = animation.Drive(s.primaryPositionCurve, bottomUpTween())
-	var secondary animation.Animation[float64] = w.secondaryRouteAnimation
+	secondary := w.secondaryRouteAnimation
 	if !w.linearTransition {
 		s.secondaryPositionCurve = animation.NewCurvedAnimation(w.secondaryRouteAnimation, animation.Curves.LinearToEaseOut, animation.Curves.EaseInToLinear)
 		secondary = s.secondaryPositionCurve

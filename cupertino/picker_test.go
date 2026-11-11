@@ -563,7 +563,7 @@ func TestCupertinoPickerArguments(t *testing.T) {
 		}, "CupertinoPickerSqueezeNotPositive"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			requireErrorTag(t, recoverError(tt.make), tt.tag)
+			checkErrorTag(t, recoverError(tt.make), tt.tag)
 		})
 	}
 }

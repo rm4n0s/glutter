@@ -218,7 +218,7 @@ func TestCupertinoDesktopTextSelectionToolbar(t *testing.T) {
 	t.Run("no children is an error", func(t *testing.T) {
 		skipUnlessDebug(t)
 		err := recoverError(func() { cupertino.NewCupertinoDesktopTextSelectionToolbar(ui.Offset{}, nil) })
-		requireErrorTag(t, err, "CupertinoDesktopTextSelectionToolbarNoChildren")
+		checkErrorTag(t, err, "CupertinoDesktopTextSelectionToolbarNoChildren")
 	})
 }
 

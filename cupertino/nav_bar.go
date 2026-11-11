@@ -121,10 +121,6 @@ func NewCupertinoNavigationBarLarge(opts ...CupertinoNavigationBarOpts) *Cuperti
 	return &CupertinoNavigationBar{widgets.NewStatefulWidgetBase(widgets.WidgetOpts{Key: o.Key}), o}
 }
 
-// large is whether the bar is the large one (it is known by its large title being set, as in Flutter, or by
-// the large constructor: a large bar whose title comes from the route has none given).
-func (w *CupertinoNavigationBar) isLarge() bool { return w.o.Middle == nil && w.o.LargeTitle != nil }
-
 // LargeTitle is the large title, or nil.
 //
 // Flutter: cupertino/nav_bar.dart CupertinoNavigationBar.largeTitle
@@ -338,7 +334,7 @@ func (s *cupertinoNavigationBarState) Build(bc widgets.BuildContext) widgets.Wid
 		return navBar
 	}
 	return widgets.NewBuilder(func(bc widgets.BuildContext) widgets.Widget {
-		var tag any = w.o.HeroTag
+		tag := w.o.HeroTag
 		if tag == nil {
 			tag = navBarHeroTag{widgets.NavigatorOf(bc)}
 		}

@@ -239,7 +239,7 @@ func (w *CupertinoTabBar) wrapActiveItem(bc widgets.BuildContext, item widgets.W
 	if !active {
 		return item
 	}
-	var activeColor ui.ColorValue = w.o.ActiveColor
+	activeColor := w.o.ActiveColor
 	if activeColor == nil {
 		activeColor = CupertinoThemeOf(bc).PrimaryColor()
 	}

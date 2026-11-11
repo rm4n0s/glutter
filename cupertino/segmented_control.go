@@ -403,7 +403,7 @@ func (s *segmentedControlState[T]) Build(bc widgets.BuildContext) widgets.Widget
 			onTapDown = func(gestures.TapDownDetails) { s.onTapDown(currentKey) }
 			onTapCancel = s.onTapCancel
 		}
-		var cursor services.MouseCursor = services.MouseCursorDefer
+		cursor := services.MouseCursorDefer
 		if foundation.IsWeb {
 			cursor = services.SystemMouseCursors.Click
 		}
