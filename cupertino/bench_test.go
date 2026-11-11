@@ -18,7 +18,7 @@ import (
 // large title collapsing while a list scrolls, and of the wheel of a picker while it flings, at the size of a 1080p
 // display with a pixel ratio of 1.25 (the size of the gallery's benchmarks). Run them without the debug checks:
 //
-//	go test -tags glutter_release ./cupertino -run xxx -bench . -benchmem
+//	go test ./cupertino -run xxx -bench . -benchmem
 //
 // Each reports the time of one frame; an iteration of the page transition is the transition's frames.
 

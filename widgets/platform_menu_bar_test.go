@@ -21,6 +21,7 @@ func menuApp2(ts *gluttertest.Tester, menus []PlatformMenuItem) {
 
 func asMacOS(t *testing.T) {
 	t.Helper()
+	skipUnlessDebug(t) // the platform override is a debug-only feature
 	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformMacOS))
 	t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
 }

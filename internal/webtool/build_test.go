@@ -90,16 +90,16 @@ func TestBuildRelease(t *testing.T) {
 		t.Skip("builds a wasm program")
 	}
 	dir := t.TempDir()
-	plain, err := Build(context.Background(), BuildOptions{Package: "./testdata/hello", OutDir: filepath.Join(dir, "plain")})
+	debug, err := Build(context.Background(), BuildOptions{Package: "./testdata/hello", OutDir: filepath.Join(dir, "debug"), Debug: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	release, err := Build(context.Background(), BuildOptions{Package: "./testdata/hello", OutDir: filepath.Join(dir, "release"), Release: true})
+	release, err := Build(context.Background(), BuildOptions{Package: "./testdata/hello", OutDir: filepath.Join(dir, "release")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if release.WasmSize >= plain.WasmSize {
-		t.Errorf("the release build (%d bytes) is not smaller than the plain one (%d): -s -w did not apply", release.WasmSize, plain.WasmSize)
+	if release.WasmSize >= debug.WasmSize {
+		t.Errorf("the release build (%d bytes) is not smaller than the debug one (%d): -s -w did not apply", release.WasmSize, debug.WasmSize)
 	}
 }
 

@@ -72,6 +72,9 @@ func TestSystemNavigatorSetFrameworkHandlesBack(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.platform.Name(), func(t *testing.T) {
+			if !foundation.DebugMode {
+				t.Skip("the platform override is a debug-only feature")
+			}
 			if foundation.IsWeb {
 				// system_navigator.dart: the call is for Android and not for the web.
 				tc.want = nil

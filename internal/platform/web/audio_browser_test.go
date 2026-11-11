@@ -37,6 +37,7 @@ func audioSite(t *testing.T) string {
 			return
 		}
 		_, audioErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/platform/web/audiotest", Dir: webtest.ModuleRoot(t), OutDir: audioDir,
 		})
 	})

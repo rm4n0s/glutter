@@ -26,10 +26,10 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var envs listFlag
 	bf.add(fs, false)
 	df.add(fs)
-	// perf measures release builds of both ABIs unless told otherwise.
-	bf.release, bf.abi = true, "arm64,amd64"
-	fs.Lookup("release").DefValue, fs.Lookup("abi").DefValue = "true", "arm64,amd64"
-	fs.Var(&envs, "env", "an environment variable for the app, GLUTTER_X=v (repeatable); GLUTTER_DEV_EVENTS=script drives the frame scenario and needs -release=false")
+	// perf measures both ABIs unless told otherwise.
+	bf.abi = "arm64,amd64"
+	fs.Lookup("abi").DefValue = "arm64,amd64"
+	fs.Var(&envs, "env", "an environment variable for the app, GLUTTER_X=v (repeatable); GLUTTER_DEV_EVENTS=script drives the frame scenario and needs -debug")
 	avd := fs.String("avd", "glutter-37", "the virtual device to start when no -device is given")
 	renderer := fs.String("renderer", "", "the renderer: auto, vulkan, gles or soft (GLUTTER_RENDERER)")
 	starts := fs.Int("starts", 5, "how many times the app is stopped and started to time the cold start")
@@ -55,8 +55,8 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if *renderer != "" {
 		extras["GLUTTER_RENDERER"] = *renderer
 	}
-	if _, ok := extras[devEventsKey]; ok && bf.release {
-		return errors.New(tagAndroidPerfDevEventsRelease, "GLUTTER_DEV_EVENTS is read only by debug builds: add -release=false (its frame times are those of a debug build)")
+	if _, ok := extras[devEventsKey]; ok && !bf.debug {
+		return errors.New(tagAndroidPerfDevEventsRelease, "GLUTTER_DEV_EVENTS is read only by debug builds: add -debug (its frame times are those of a debug build)")
 	}
 	abis, err := parseABIs(bf.abi)
 	if err != nil {
@@ -79,9 +79,10 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return err
 	}
 	opts := bf.options(pkg)
-	if opts.Release && (opts.Key == "" || opts.Cert == "") {
-		// A measurement build is signed with the debug key, so that it installs over the debug
-		// build of the same app; it is not a build to publish.
+	if !opts.Debug && (opts.Key == "" || opts.Cert == "") {
+		// A release measurement build is signed with the debug key, so that it installs over the
+		// debug build of the same app, and is not debuggable, as a store build is; it is not a
+		// build to publish.
 		dir, err := debugKeyDir()
 		if err != nil {
 			return err

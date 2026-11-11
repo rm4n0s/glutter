@@ -129,6 +129,9 @@ func TestLeaksRoutes(t *testing.T) {
 			}
 		}},
 		{"scroll a list with a scrollbar", func(tb testing.TB) (*gluttertest.Tester, func()) {
+			if !foundation.DebugMode {
+				tb.Skip("the platform override is a debug-only feature")
+			}
 			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformAndroid))
 			if t, ok := tb.(*testing.T); ok {
 				t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })

@@ -31,7 +31,7 @@ func main() {
 }
 
 const usage = `usage:
-  glutter-macos build [-o App.app] [-name n] [-id dev.x.y] [-version v] [-icon file.png] [-universal] [-hardened] [-release] [-usage KEY=text]... <package>
+  glutter-macos build [-o App.app] [-name n] [-id dev.x.y] [-version v] [-icon file.png] [-universal] [-hardened] [-debug] [-usage KEY=text]... <package>
   glutter-macos run [build flags] [-env GLUTTER_X=v]... <package>
   glutter-macos shot [-env GLUTTER_X=v]... [-front] [-bundle [build flags]] [-timeout d] -o file.png <package>
   glutter-macos perf [build flags] [-starts n] [-seconds n] [-settle d] [-env GLUTTER_X=v]... [-renderer r] [-format text|markdown] [-o file] <package>`

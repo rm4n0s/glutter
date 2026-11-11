@@ -26,9 +26,9 @@ type perfReport struct {
 
 // document turns the report into the tables that both formats print.
 func (r perfReport) document() perfstats.Doc {
-	build := "debug"
+	build := "debug (-tags debug_mode)"
 	if r.Release {
-		build = "release (-tags glutter_release, stripped)"
+		build = "release (stripped)"
 	}
 	doc := perfstats.Doc{Head: [][2]string{{"app", r.Package}, {"build", build}, {"where", r.Machine}}}
 	if r.Renderer != "" {

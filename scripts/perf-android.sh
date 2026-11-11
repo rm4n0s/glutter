@@ -40,7 +40,7 @@
 # with its button and go to "Lists & cards", scroll it, open the drawer for "Data & progress", scroll
 # it, then "Buttons", scroll it, and back to "Home". The taps on the drawer's entries assume a status
 # bar of 63 to 118 px (an entry is 147 px tall): look at one frame of it with
-#   go run ./cmd/glutter-android shot -screen -o /tmp/s.png -release=false \
+#   go run ./cmd/glutter-android shot -screen -o /tmp/s.png \
 #       -env GLUTTER_DEV_EVENTS='wait:1s;tap:74,164;wait:1s;tap:300,1487' ./examples/gallery
 # before trusting a number.
 #
@@ -147,13 +147,13 @@ perf() {
 
 for t in ${tests//,/ }; do
   case "$t" in
-    counter) perf "counter (release)" 1800 -release=true -frames=false ./examples/counter ;;
-    gallery) perf "gallery, home page (release)" 1800 -release=true -frames=false ./examples/gallery ;;
+    counter) perf "counter (release)" 1800 -frames=false ./examples/counter ;;
+    gallery) perf "gallery, home page (release)" 1800 -frames=false ./examples/gallery ;;
     animation)
-      perf "gallery, an animation with no input (release)" 1800 -release=true -seconds "$gseconds" \
+      perf "gallery, an animation with no input (release)" 1800 -seconds "$gseconds" \
         -env GLUTTER_GALLERY_PAGE=data -env GLUTTER_GALLERY_ANIMATE=1 ./examples/gallery ;;
     navigation)
-      perf "gallery, scrolling and changing pages (debug build: dev events)" 2400 -release=false -seconds "$nseconds" \
+      perf "gallery, scrolling and changing pages (debug build: dev events)" 2400 -debug -seconds "$nseconds" \
         -env "GLUTTER_DEV_EVENTS=$events" ./examples/gallery ;;
     *) echo "perf-android.sh: unknown test $t (counter, gallery, animation, navigation)" >&2; exit 64 ;;
   esac

@@ -17,15 +17,6 @@ func evUp(pointer int, p ui.Offset) *PointerUpEvent {
 	return NewPointerUpEvent(PointerEventOpts{Pointer: pointer, Position: p})
 }
 
-// testGestureRecognizer is recognizer_test.dart's TestGestureRecognizer.
-type testGestureRecognizer struct{ GestureRecognizerBase }
-
-func (r *testGestureRecognizer) DebugDescription() string                    { return "debugDescription content" }
-func (r *testGestureRecognizer) AddPointer(*PointerDownEvent)                {}
-func (r *testGestureRecognizer) AcceptGesture(int)                           {}
-func (r *testGestureRecognizer) RejectGesture(int)                           {}
-func (r *testGestureRecognizer) AddPointerPanZoom(*PointerPanZoomStartEvent) {}
-
 // indefiniteGestureRecognizer never resolves, so the arena stays open.
 type indefiniteGestureRecognizer struct {
 	GestureRecognizerBase

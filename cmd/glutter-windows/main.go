@@ -31,10 +31,10 @@ func main() {
 }
 
 const usage = `usage:
-  glutter-windows build [-o app.exe] [-arch amd64,arm64] [-release] [-console] [-name Name] [-app-id id] [-icon icon.png] [-version 1.2.3.4] <package>
+  glutter-windows build [-o app.exe] [-arch amd64,arm64] [-debug] [-console] [-name Name] [-app-id id] [-icon icon.png] [-version 1.2.3.4] <package>
   glutter-windows run   [-headless] [-env GLUTTER_X=v]... [-timeout d] [build flags] <package>
   glutter-windows shot  [-env GLUTTER_X=v]... [-screen] [-settle d] [-timeout d] -o file.png [build flags] <package>
-  glutter-windows perf  [-release=true] [-arch amd64,arm64] [-renderer r] [-env GLUTTER_X=v]... [-starts N] [-settle d] [-seconds N] [-frames=true] [-format text|markdown] [-o report] <package>`
+  glutter-windows perf  [-debug] [-arch amd64,arm64] [-renderer r] [-env GLUTTER_X=v]... [-starts N] [-settle d] [-seconds N] [-frames=true] [-format text|markdown] [-o report] <package>`
 
 // run does what the command line asks. stdout gets what the commands print; flag errors go to
 // stderr.

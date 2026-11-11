@@ -24,7 +24,7 @@ func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 type buildFlags struct {
 	out, abi, appID, label, icon, key, cert string
 	validation                              string
-	release                                 bool
+	debug                                   bool
 	permissions                             listFlag
 }
 
@@ -33,11 +33,11 @@ func (b *buildFlags) add(fs *flag.FlagSet, withOut bool) {
 		fs.StringVar(&b.out, "o", "", "the APK to write (default: <package>.apk)")
 	}
 	fs.StringVar(&b.abi, "abi", "", "the ABIs to build, comma separated: arm64, amd64 (default: all; install and run build the device's)")
-	fs.BoolVar(&b.release, "release", false, "build with -tags glutter_release and -ldflags=-s -w, not debuggable")
+	fs.BoolVar(&b.debug, "debug", false, "build with -tags debug_mode, not stripped (a release build, stripped with -ldflags=-s -w, otherwise)")
 	fs.StringVar(&b.appID, "app-id", "", "the application ID (default: org.glutter.<name of the package>)")
 	fs.StringVar(&b.label, "label", "", "the name under the icon (default: the name of the package)")
 	fs.StringVar(&b.icon, "icon", "", "a PNG for the launcher icon (default: Glutter's)")
-	fs.StringVar(&b.key, "key", "", "the PKCS#8 private key that signs a release build")
+	fs.StringVar(&b.key, "key", "", "the PKCS#8 private key that signs a store build (not debuggable; with -cert)")
 	fs.StringVar(&b.cert, "cert", "", "the X.509 certificate of the key")
 	fs.StringVar(&b.validation, "vulkan-validation", "", "a directory with <abi>/libVkLayer_khronos_validation.so to pack, for the device tests (SPEC §24.13)")
 	fs.Var(&b.permissions, "permission", "an Android permission the app asks for, such as android.permission.INTERNET (repeatable)")
@@ -50,7 +50,7 @@ func (b *buildFlags) options(pkg string) androidtool.BuildOptions {
 			abis = append(abis, a)
 		}
 	}
-	return androidtool.BuildOptions{Package: pkg, Out: b.out, ABIs: abis, Release: b.release, AppID: b.appID, Label: b.label,
+	return androidtool.BuildOptions{Package: pkg, Out: b.out, ABIs: abis, Debug: b.debug, AppID: b.appID, Label: b.label,
 		Icon: b.icon, Key: b.key, Cert: b.cert, Permissions: b.permissions, ValidationLayerDir: b.validation}
 }
 

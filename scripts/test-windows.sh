@@ -31,7 +31,14 @@ if ! command -v Xvfb >/dev/null 2>&1; then
 fi
 
 args=("$@")
-if [[ ${#args[@]} -eq 0 ]]; then
+# The default packages are used when the arguments name none: only flags, such as -tags debug_mode.
+haspkg=0
+for a in ${args[@]+"${args[@]}"}; do
+  case "$a" in
+    .|./*|../*|github.com/*) haspkg=1 ;;
+  esac
+done
+if [[ $haspkg -eq 0 ]]; then
   # One line per Go file that builds for Windows: "<import path> <file>".
   listing="$(GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go list -f \
     '{{$p := .ImportPath}}{{$d := .Dir}}{{range .GoFiles}}{{$p}} {{$d}}/{{.}}{{"\n"}}{{end}}{{range .TestGoFiles}}{{$p}} {{$d}}/{{.}}{{"\n"}}{{end}}{{range .XTestGoFiles}}{{$p}} {{$d}}/{{.}}{{"\n"}}{{end}}' ./...)"

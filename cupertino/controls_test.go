@@ -312,6 +312,7 @@ func TestCupertinoSlider(t *testing.T) {
 		}
 	})
 	t.Run("a haptic feedback on iOS at an end", func(t *testing.T) {
+		skipUnlessDebug(t) // the platform override is a debug-only feature
 		foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformIOS))
 		defer foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
 		ts := gluttertest.New(t)

@@ -127,9 +127,9 @@ var cacheOrder = []cacheState{cacheEmpty, cacheWarm}
 
 // document turns the report into the tables that both formats print.
 func (r *perfReport) document() perfstats.Doc {
-	build := "debug"
+	build := "debug (-tags debug_mode)"
 	if r.Release {
-		build = "release (-tags glutter_release, stripped)"
+		build = "release (stripped)"
 	}
 	doc := perfstats.Doc{Head: [][2]string{{"app", r.Package}, {"build", build},
 		{"where", "Wine on Linux, Direct3D 12 through vkd3d on the host's Vulkan (lavapipe): not a GPU on Windows"}}}

@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rm4n0s/errors"
-
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -95,36 +93,6 @@ func (p *testPointer) cancel() *PointerCancelEvent {
 	return NewPointerCancelEvent(PointerEventOpts{
 		Pointer: p.pointer, Kind: p.kind, Device: p.device, Position: p.location,
 	})
-}
-
-// recoverError returns the error a function panics with.
-func recoverError(t *testing.T, fn func()) (err error) {
-	t.Helper()
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("expected a panic")
-		}
-		e, ok := r.(error)
-		if !ok {
-			t.Fatalf("expected an error panic, got %T (%v)", r, r)
-		}
-		err = e
-	}()
-	fn()
-	return nil
-}
-
-// assertRoute checks that err is a tagged error with the route.
-func assertRoute(t *testing.T, err error, route string) {
-	t.Helper()
-	appErr, ok := errors.FromError(err)
-	if !ok {
-		t.Fatalf("expected *errors.Error, got %T", err)
-	}
-	if !appErr.HasRoute(route) {
-		t.Errorf("unexpected failure path: %s", appErr.Route())
-	}
 }
 
 func us(n int) time.Duration { return time.Duration(n) * time.Microsecond }

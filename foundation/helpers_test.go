@@ -35,16 +35,6 @@ var hashCodes = regexp.MustCompile(`#[0-9a-fA-F]{5}`)
 // ignoringHashCodes is Flutter's equalsIgnoringHashCodes normalization.
 func ignoringHashCodes(s string) string { return hashCodes.ReplaceAllString(s, "#00000") }
 
-type exampleEnum int
-
-const (
-	exampleHello exampleEnum = iota
-	exampleWorld
-	exampleDeferToChild
-)
-
-func (e exampleEnum) Name() string { return [...]string{"hello", "world", "deferToChild"}[e] }
-
 // recoverError runs fn and returns the error it panicked with.
 func recoverError(t *testing.T, fn func()) (err error) {
 	t.Helper()

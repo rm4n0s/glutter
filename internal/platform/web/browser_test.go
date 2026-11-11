@@ -44,6 +44,7 @@ func site(t *testing.T) string {
 			return
 		}
 		if _, buildErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./examples/counter", Dir: webtest.ModuleRoot(t), OutDir: siteDir,
 		}); buildErr != nil {
 			return

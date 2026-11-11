@@ -1,4 +1,4 @@
-//go:build glutter_release
+//go:build !debug_mode && !glutter_profile
 
 package foundation
 
@@ -20,8 +20,8 @@ func TestReleaseMode(t *testing.T) {
 	if !appErr.HasRoute("SetDebugDefaultTargetPlatformOverride.TargetPlatformOverrideNotDebug") {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
-	if got := DefaultTargetPlatform(); got != TargetPlatformLinux {
-		t.Errorf("default = %v", got)
+	if got := DefaultTargetPlatform(); got != hostWant {
+		t.Errorf("default = %v, want %v, the host of this build", got, hostWant)
 	}
 	// Diagnostics render nothing in release builds.
 	tree := &TestTree{properties: []DiagnosticsNode{NewIntProperty("n", Some(1))}}

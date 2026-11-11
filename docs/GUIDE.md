@@ -2058,7 +2058,7 @@ func main() {
 If you know Flutter on the web, this is what is the same and what is not.
 
 - **Build and run.** There is no `flutter build web`: `go run ./cmd/glutter-web serve ./your/app`
-  builds and serves it, and `glutter-web build -release -o dist ./your/app` makes the directory to
+  builds and serves it, and `glutter-web build -o dist ./your/app` makes the directory to
   deploy (`index.html`, `wasm_exec.js`, `app.wasm`, `app.wasm.gz`). It is one WebAssembly module and one
   canvas; there is no HTML renderer and no DOM widgets, only the hidden text field that the
   browser needs for typing, the clipboard and input methods.
@@ -2102,7 +2102,7 @@ func main() { println(notesPlace()) }
   `http` goes through `fetch`, so the browser's CORS rules apply.
 - **Size and speed.** The page loads one large module (the counter is 8.8 MB gzipped in a release
   build) and runs on one thread, so a click that builds a whole new screen takes tens of
-  milliseconds. Build with `-release` for anything you measure, and read
+  milliseconds. Measure a release build (the default; `-debug` makes a debug build), and read
   [PERFORMANCE.md](PERFORMANCE.md).
 
 ## For Flutter Android developers
@@ -2111,8 +2111,8 @@ If you build Flutter apps for Android, this is what is the same and what is not.
 
 - **Build and run.** There is no `flutter run` or `flutter build apk`: `go run ./cmd/glutter-android run ./your/app`
   builds the APK (one program for arm64 and one for x86_64), installs it on the connected phone or
-  the running emulator, starts it and streams its log until you press Ctrl+C. `build -release` makes the
-  release APK (`-key` and `-cert` sign it; a debug build is signed with a key the tool makes once), and
+  the running emulator, starts it and streams its log until you press Ctrl+C. `build -key k.pk8 -cert c.pem` makes the
+  store APK (signed with them and not debuggable; without them the APK is signed with a key the tool makes once), and
   `shot -screen -o file.png` takes a screenshot. It needs the Android SDK and NDK (`ANDROID_HOME`) and
   Java for `apksigner`; a missing piece says which `sdkmanager` package to install. There is no Gradle
   and no `android/` folder: the manifest is generated (one activity with the `configChanges` that
@@ -2144,8 +2144,8 @@ If you build Flutter apps for Android, this is what is the same and what is not.
   only), and the plugins' channels. Accessibility (TalkBack), the soft keyboard and input methods, the
   system fonts and emoji, dark mode, text scale, locales, reduced motion and the system bars work.
 - **Size and start.** The program is a Go binary: a release counter is about 26 MiB per ABI and the
-  gallery 37 MiB, and it starts in about 0.6 s on the emulator with the CPU renderer. Build with
-  `-release` for anything you measure, and read [PERFORMANCE.md](PERFORMANCE.md).
+  gallery 37 MiB, and it starts in about 0.6 s on the emulator with the CPU renderer. Measure a
+  release build (the default, without `-debug`), and read [PERFORMANCE.md](PERFORMANCE.md).
 
 ## For Flutter Windows developers
 
@@ -2153,7 +2153,7 @@ If you build Flutter apps for Windows, this is how a Glutter app becomes an `.ex
 
 - **Build and run.** There is no `flutter build windows` and no `windows/` folder with a C++ runner:
   `go run ./cmd/glutter-windows build ./your/app` makes `app.exe`, a Go program with no DLL next to
-  it (`-arch amd64,arm64` builds both, `-release` strips it and builds with `glutter_release`, `-o`
+  it (`-arch amd64,arm64` builds both, `-debug` makes a debug build that is not stripped, `-o`
   names the file). On Linux `run` builds it and starts it under Wine (`-headless` on a hidden X
   server instead of your screen; it needs Wine and Xvfb and must be started in a checkout of
   Glutter), on Windows it starts the `.exe` itself, and `shot -o file.png` saves the frame the app
@@ -2211,7 +2211,7 @@ If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`
 - **Build and run.** There is no `flutter build macos` and no `macos/` folder with a Swift runner or an Xcode project:
   `go run ./cmd/glutter-macos build ./your/app` makes `app.app`, a signed bundle, and needs only Go and the
   `codesign` of the Command Line Tools. `-o` names the bundle, `-name`, `-id` and `-version` set what the Dock, the
-  bundle identifier and Finder's Get Info show, `-release` strips the program and builds with `glutter_release`,
+  bundle identifier and Finder's Get Info show, `-debug` makes a debug build that is not stripped,
   and `-universal` makes one executable for Apple silicon and Intel (a Mac builds both by itself, no `lipo`).
   `run` builds the bundle in a temporary directory and starts it with its log on your terminal, `shot -bundle -o
   file.png` saves the frame the app draws (no screen recording permission: the app saves its own frame), and
@@ -2353,8 +2353,13 @@ If you build Flutter apps for iOS, this is how a Glutter app becomes an `.app` f
   cancelled with the state. There is no `async` and `await`: blocking is fine on your own
   goroutines.
 - **Errors.** Flutter's exceptions are panics only for programmer errors (a debug-build
-  `assert` is a check that exists in debug builds, `-tags glutter_release` removes it). A
+  `assert` is a check that exists in debug builds, which `-tags debug_mode` makes; a plain build is a release build without it). A
   failure that can happen at run time is an `error` value.
+- **Build modes.** `flutter run` makes a debug build; `go run`, `go build` and `go install` make
+  a release build (`foundation.ReleaseMode`), the same as `flutter build`. Add `-tags debug_mode`
+  for a debug build with Flutter's asserts and the diagnostics (`go run -tags debug_mode ./your/app`),
+  and `-tags glutter_profile` for a profile build. The `glutter-*` tools take `-debug`. Run your
+  tests in both modes: `go test ./...` and `go test -tags debug_mode ./...`.
 - **Hot reload** is not possible in Go; `go run` is fast and the examples take no state.
 - **Platform code.** `dart:io`, plugins and platform channels are the packages of the
   standard library, and `desktop` (file dialogs, notifications, the tray, opening a URL).

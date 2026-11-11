@@ -33,7 +33,7 @@ func TestWineFirstFrameIsTheCounter(t *testing.T) {
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "counter.exe")
-	build := exec.Command("go", "build", "-o", exe, "./examples/counter")
+	build := exec.Command("go", "build", "-tags", "debug_mode", "-o", exe, "./examples/counter")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
@@ -121,7 +121,7 @@ func TestWineSelfCaptureAcceptsEveryFormOfPath(t *testing.T) {
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "counter.exe")
-	build := exec.Command("go", "build", "-o", exe, "./examples/counter")
+	build := exec.Command("go", "build", "-tags", "debug_mode", "-o", exe, "./examples/counter")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
@@ -189,7 +189,7 @@ func buildCounter(t *testing.T) (*winetest.Harness, string) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(t.TempDir(), "counter.exe")
-	build := exec.Command("go", "build", "-o", exe, "./examples/counter")
+	build := exec.Command("go", "build", "-tags", "debug_mode", "-o", exe, "./examples/counter")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {

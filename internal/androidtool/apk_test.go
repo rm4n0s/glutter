@@ -79,12 +79,16 @@ func TestBuildCommandLines(t *testing.T) {
 		abis    []string // ABI names built, in order
 		goArgs  []string // the words every go command has
 		noGoArg []string
+		// debugKey says that the APK is signed with the debug key of ConfigDir, not with Key and Cert.
+		debugKey bool
 	}{
-		{name: "debug, both ABIs", opts: BuildOptions{Package: "./examples/counter"}, abis: []string{"arm64-v8a", "x86_64"},
-			goArgs: []string{"build", "-buildmode=c-shared"}, noGoArg: []string{"glutter_release"}},
-		{name: "release, one ABI", opts: BuildOptions{Package: "./examples/counter", ABIs: []string{"amd64"}, Release: true, Key: "k", Cert: "c"},
-			abis: []string{"x86_64"}, goArgs: []string{"-tags", "glutter_release", "-ldflags=-s -w"}},
-		{name: "ABI by its Android name", opts: BuildOptions{Package: "./examples/counter", ABIs: []string{"arm64-v8a"}}, abis: []string{"arm64-v8a"}},
+		{name: "release, both ABIs", opts: BuildOptions{Package: "./examples/counter"}, abis: []string{"arm64-v8a", "x86_64"},
+			goArgs: []string{"build", "-buildmode=c-shared", "-ldflags=-s -w"}, noGoArg: []string{"debug_mode"}, debugKey: true},
+		{name: "debug, one ABI", opts: BuildOptions{Package: "./examples/counter", ABIs: []string{"amd64"}, Debug: true},
+			abis: []string{"x86_64"}, goArgs: []string{"-tags", "debug_mode"}, noGoArg: []string{"-ldflags"}, debugKey: true},
+		{name: "a store build", opts: BuildOptions{Package: "./examples/counter", ABIs: []string{"amd64"}, Key: "k", Cert: "c"},
+			abis: []string{"x86_64"}, goArgs: []string{"-ldflags=-s -w"}, noGoArg: []string{"debug_mode"}},
+		{name: "ABI by its Android name", opts: BuildOptions{Package: "./examples/counter", ABIs: []string{"arm64-v8a"}}, abis: []string{"arm64-v8a"}, debugKey: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -143,6 +147,9 @@ func TestBuildCommandLines(t *testing.T) {
 			last := run.cmds[len(run.cmds)-1]
 			if joined := strings.Join(last.Args, " "); !strings.Contains(joined, "--min-sdk-version 26") || !strings.Contains(joined, "--out "+tt.opts.Out) {
 				t.Errorf("apksigner: %s", joined)
+			}
+			if key := last.Args[2]; tt.debugKey != strings.HasPrefix(key, tt.opts.ConfigDir) || !tt.debugKey && key != "k" {
+				t.Errorf("apksigner signs with %q (debug key %v)", key, tt.debugKey)
 			}
 			for _, c := range run.cmds {
 				if filepath.Base(c.Name) == "zipalign" && strings.Join(c.Args[:4], " ") != "-f -P 16 4" {
@@ -225,7 +232,8 @@ func TestBuildErrors(t *testing.T) {
 	}{
 		{name: "no package", opts: func() BuildOptions { o := good(); o.Package = ""; return o }, route: "Build." + TagAndroidBuildInvalid},
 		{name: "unknown ABI", opts: func() BuildOptions { o := good(); o.ABIs = []string{"mips"}; return o }, route: "Build->selectABIs." + TagAndroidBuildInvalid},
-		{name: "release without a key", opts: func() BuildOptions { o := good(); o.Release = true; return o }, route: "Build." + TagAndroidBuildInvalid},
+		{name: "a key without a certificate", opts: func() BuildOptions { o := good(); o.Key = "k"; return o }, route: "Build." + TagAndroidBuildInvalid},
+		{name: "a certificate without a key", opts: func() BuildOptions { o := good(); o.Cert = "c"; return o }, route: "Build." + TagAndroidBuildInvalid},
 		{name: "bad application ID", opts: func() BuildOptions { o := good(); o.AppID = "nodots"; return o }, route: "Build." + TagAndroidBuildInvalid},
 		{name: "missing icon", opts: func() BuildOptions { o := good(); o.Icon = "/no/such/icon.png"; return o }, route: "Build." + TagAndroidWriteFailed},
 		{name: "go fails", opts: good, fail: "go", route: "Build->fakeRunner.Run." + TagAndroidCommandFailed},

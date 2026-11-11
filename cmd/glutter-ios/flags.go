@@ -34,7 +34,7 @@ type buildFlags struct {
 	team         string
 	profile      string
 	identity     string
-	release      bool
+	debug        bool
 	orientations string
 	usage        listFlags
 }
@@ -53,7 +53,7 @@ func (b *buildFlags) add(fs *flag.FlagSet, sim bool) {
 	fs.StringVar(&b.team, "team", "", "the developer team of a build for a device")
 	fs.StringVar(&b.profile, "profile", "", "the provisioning profile of a build for a device")
 	fs.StringVar(&b.identity, "identity", "", "the signing identity of a build for a device (Apple Development by default)")
-	fs.BoolVar(&b.release, "release", false, "build with -tags glutter_release and strip the program")
+	fs.BoolVar(&b.debug, "debug", false, "build with -tags debug_mode, not stripped (a release build, stripped, otherwise)")
 	fs.StringVar(&b.orientations, "orientations", "", "the orientations to support, separated by commas: portrait, portrait-upside-down, landscape-left, landscape-right")
 	fs.Var(&b.usage, "usage", "a usage string of the Info.plist, KEY=text (repeatable)")
 }
@@ -67,7 +67,7 @@ var orientationNames = map[string]string{
 
 // options turns the flags into the options of the build.
 func (b *buildFlags) options(pkg string, simulator bool) (iostool.BuildOptions, error) {
-	o := iostool.BuildOptions{Package: pkg, Out: b.out, Simulator: simulator, Release: b.release, Team: b.team, Profile: b.profile,
+	o := iostool.BuildOptions{Package: pkg, Out: b.out, Simulator: simulator, Debug: b.debug, Team: b.team, Profile: b.profile,
 		Identity: b.identity, ID: b.id, Name: b.name, Version: b.version, Icon: b.icon, Usage: map[string]string{}}
 	for _, kv := range b.usage.values {
 		k, v, _ := strings.Cut(kv, "=")

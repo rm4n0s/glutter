@@ -326,6 +326,7 @@ func TestModalBarrierSemanticsTree(t *testing.T) {
 	}
 	for _, platform := range []foundation.TargetPlatform{foundation.TargetPlatformIOS, foundation.TargetPlatformMacOS, foundation.TargetPlatformAndroid} {
 		t.Run("a dismissible barrier includes a button on "+platform.String(), func(t *testing.T) {
+			skipUnlessDebug(t) // the platform override is a debug-only feature
 			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(platform))
 			defer foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
 			for name, barrier := range map[string]Widget{
@@ -342,6 +343,7 @@ func TestModalBarrierSemanticsTree(t *testing.T) {
 			}
 		})
 		t.Run("the semantics clipper clips the rect in four directions on "+platform.String(), func(t *testing.T) {
+			skipUnlessDebug(t) // the platform override is a debug-only feature
 			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(platform))
 			defer foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
 			ts := gluttertest.New(t, gluttertest.Opts{Size: size})

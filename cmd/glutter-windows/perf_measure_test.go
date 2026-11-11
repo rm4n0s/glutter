@@ -180,7 +180,7 @@ func (f *fakeWine) deps(t *testing.T, sizes map[string]int64) perfDeps {
 }
 
 func testOptions() perfOptions {
-	return perfOptions{pkg: "./examples/counter", build: wintool.BuildOptions{Release: true}, archs: []string{"amd64", "arm64"},
+	return perfOptions{pkg: "./examples/counter", build: wintool.BuildOptions{}, archs: []string{"amd64", "arm64"},
 		extras: []string{"GLUTTER_RENDERER=d3d12"}, starts: 2, settle: 5 * time.Second, seconds: 10,
 		timeouts: perfTimeouts{process: time.Minute, poll: 250 * time.Millisecond, startup: 6 * time.Second, run: time.Minute}}
 }

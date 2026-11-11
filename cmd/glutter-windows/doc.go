@@ -1,10 +1,10 @@
 // Command glutter-windows builds, runs and takes screenshots of Glutter apps for Windows (SPEC
 // §25.1):
 //
-//	glutter-windows build [-o app.exe] [-arch amd64,arm64] [-release] [-console] [-name Name] [-app-id id] [-icon icon.png] [-version 1.2.3.4] <package>
+//	glutter-windows build [-o app.exe] [-arch amd64,arm64] [-debug] [-console] [-name Name] [-app-id id] [-icon icon.png] [-version 1.2.3.4] <package>
 //	glutter-windows run [-headless] [-env GLUTTER_X=v]... [-timeout d] [build flags] <package>
 //	glutter-windows shot [-env GLUTTER_X=v]... [-screen] [-settle d] [-timeout d] -o file.png [build flags] <package>
-//	glutter-windows perf [-release=true] [-arch amd64,arm64] [-renderer r] [-env GLUTTER_X=v]... [-starts N] [-settle d] [-seconds N] [-frames=true] [-format text|markdown] [-o report] <package>
+//	glutter-windows perf [-debug] [-arch amd64,arm64] [-renderer r] [-env GLUTTER_X=v]... [-starts N] [-settle d] [-seconds N] [-frames=true] [-format text|markdown] [-o report] <package>
 //
 // build makes an .exe for each architecture, with the application manifest, the icon and the version
 // information that internal/wintool writes in pure Go, and with the GUI subsystem unless -console is
@@ -16,6 +16,9 @@
 // start with an empty and with a warm shader cache, the idle CPU and the memory of the Wine processes
 // (read from /proc), and the engine's frame statistics of a scenario (SPEC §15, §25.13); its numbers
 // are Wine's, not a GPU's on Windows.
+//
+// build, run and perf make release builds unless -debug is given; shot makes a debug build (-debug=false
+// for a release), since the hooks it drives (GLUTTER_DEV_*) are read only by debug builds.
 //
 // Go 1.27 or later is all the tool needs; run and shot on Linux also need Wine and Xvfb (and
 // ImageMagick for -screen) and must be started in a checkout of Glutter, whose scripts they use.

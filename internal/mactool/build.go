@@ -25,8 +25,9 @@ type BuildOptions struct {
 	// Archs are the architectures to build, "arm64" and "amd64"; with both the executable is one universal Mach-O. The default is
 	// the architecture of this machine (arm64 on a host that is not a Mac).
 	Archs []string
-	// Release builds with -tags glutter_release and -ldflags=-s -w.
-	Release bool
+	// Debug builds with -tags debug_mode (foundation.DebugMode) and does not strip the program; without it the build
+	// is a release, stripped with -ldflags=-s -w.
+	Debug bool
 	// Hardened signs with the hardened runtime and the entitlements of Entitlements().
 	Hardened bool
 	// ID, Name and Version go into the Info.plist; the defaults are DefaultID, the name of the package, and DefaultVersion.
@@ -171,8 +172,10 @@ func (o BuildOptions) iconPNG() ([]byte, error) {
 // compile runs `go build` for one architecture and reads the file it wrote.
 func (o BuildOptions) compile(ctx context.Context, out, arch string) ([]byte, error) {
 	args := []string{"build", "-o", out}
-	if o.Release {
-		args = append(args, "-tags", "glutter_release", "-ldflags=-s -w")
+	if o.Debug {
+		args = append(args, "-tags", "debug_mode")
+	} else {
+		args = append(args, "-ldflags=-s -w")
 	}
 	args = append(args, o.Package)
 	var log bytes.Buffer

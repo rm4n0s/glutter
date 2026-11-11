@@ -47,6 +47,7 @@ func gpuwebSite(t *testing.T) string {
 			return
 		}
 		_, gpuwebErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/gpu/webgpu/gpuwebtest", Dir: webtest.ModuleRoot(t), OutDir: gpuwebDir,
 		})
 	})

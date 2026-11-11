@@ -34,6 +34,7 @@ func textSite(t *testing.T) string {
 			return
 		}
 		_, textErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/platform/web/texttest", Dir: webtest.ModuleRoot(t), OutDir: textDir,
 		})
 	})

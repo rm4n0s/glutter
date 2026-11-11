@@ -218,7 +218,9 @@ func TestLeaksImagesAndFonts(t *testing.T) {
 			cache.SetMaximumSize(imageLimit)
 			show := true
 			var setShow StateSetter
-			var data []byte
+			// The first frame shows a real image: data that is not one is reported as an error in a
+			// release build (a debug build gives it to the widget's own error state, as Flutter does).
+			data := pngBytes(t, 16, 16, color.RGBA{B: 7, A: 255})
 			ts.PumpWidget(ltr(NewStatefulBuilder(func(_ BuildContext, setState StateSetter) Widget {
 				setShow = setState
 				if !show {

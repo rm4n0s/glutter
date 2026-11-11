@@ -70,9 +70,9 @@ mb() { awk -v b="$1" 'BEGIN { printf "%.1f MB", b / 1048576 }'; }
 echo "building the counter and the gallery for the web (release)..." >&2
 declare -A raw stripped gz
 for app in counter gallery; do
-  GOOS=js GOARCH=wasm go build -tags glutter_release -o "$tmp/$app-raw.wasm" "./examples/$app"
+  GOOS=js GOARCH=wasm go build -o "$tmp/$app-raw.wasm" "./examples/$app"
   raw[$app]=$(stat -c %s "$tmp/$app-raw.wasm")
-  "$gw" build -release -o "$tmp/$app-site" "./examples/$app" >/dev/null
+  "$gw" build -o "$tmp/$app-site" "./examples/$app" >/dev/null
   stripped[$app]=$(stat -c %s "$tmp/$app-site/app.wasm")
   gz[$app]=$(stat -c %s "$tmp/$app-site/app.wasm.gz")
   rm -f "$tmp/$app-raw.wasm"
@@ -82,7 +82,7 @@ perf() { # name browser renderer app extra-args...
   local name="$1" browser="$2" renderer="$3" app="$4"
   shift 4
   echo "  $browser: $name..." >&2
-  timeout -k 10 400 "$gw" perf -browser "$browser" -renderer "$renderer" -release -loads "$loads" -measure "${seconds}s" "$@" "./examples/$app" >"$tmp/$browser-$name.txt" 2>"$tmp/$browser-$name.err" || {
+  timeout -k 10 400 "$gw" perf -browser "$browser" -renderer "$renderer" -loads "$loads" -measure "${seconds}s" "$@" "./examples/$app" >"$tmp/$browser-$name.txt" 2>"$tmp/$browser-$name.err" || {
     cat "$tmp/$browser-$name.err" >&2
     echo "perf-web.sh: the measurement $name in $browser failed" >&2
     exit 1

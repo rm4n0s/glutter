@@ -33,6 +33,7 @@ func padSite(t *testing.T) string {
 			return
 		}
 		_, padErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/platform/web/padtest", Dir: webtest.ModuleRoot(t), OutDir: padDir,
 		})
 	})

@@ -24,7 +24,7 @@ func (l *listFlag) Set(v string) error { *l = append(*l, v); return nil }
 // buildFlags are the flags of the commands that build an .exe.
 type buildFlags struct {
 	out, arch, name, appID, icon, version string
-	release, console                      bool
+	debug, console                        bool
 }
 
 func (b *buildFlags) add(fs *flag.FlagSet, withOutAndArch bool) {
@@ -32,7 +32,7 @@ func (b *buildFlags) add(fs *flag.FlagSet, withOutAndArch bool) {
 		fs.StringVar(&b.out, "o", "", "the .exe to write (default: <package>.exe; with several architectures <package>_<arch>.exe)")
 		fs.StringVar(&b.arch, "arch", "", "the architectures to build, comma separated: amd64, arm64 (default: amd64)")
 	}
-	fs.BoolVar(&b.release, "release", false, "build with -tags glutter_release and -ldflags=-s -w")
+	fs.BoolVar(&b.debug, "debug", false, "build with -tags debug_mode, not stripped (a release build, stripped with -ldflags=-s -w, otherwise)")
 	fs.BoolVar(&b.console, "console", false, "build a console program (no -H=windowsgui)")
 	fs.StringVar(&b.name, "name", "", "the name of the application in the manifest and the version information (default: the name of the package)")
 	fs.StringVar(&b.appID, "app-id", "", "the name of the assembly identity (default: org.glutter.<name of the package>)")
@@ -47,7 +47,7 @@ func (b *buildFlags) options(pkg string) wintool.BuildOptions {
 			archs = append(archs, a)
 		}
 	}
-	return wintool.BuildOptions{Package: pkg, Out: b.out, Archs: archs, Release: b.release, Console: b.console,
+	return wintool.BuildOptions{Package: pkg, Out: b.out, Archs: archs, Debug: b.debug, Console: b.console,
 		Name: b.name, AppID: b.appID, Icon: b.icon, Version: b.version}
 }
 
@@ -180,6 +180,9 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var bf buildFlags
 	var envs listFlag
 	bf.add(fs, false)
+	// shot makes a debug build unless told otherwise: the hooks it drives (GLUTTER_DEV_*) are read only by debug builds.
+	bf.debug = true
+	fs.Lookup("debug").DefValue = "true"
 	fs.Var(&envs, "env", "an environment variable for the app, GLUTTER_X=v (repeatable)")
 	screen := fs.Bool("screen", false, "capture the whole screen of the X server (other windows, dialogs) instead of the app's frame")
 	settle := fs.Duration("settle", 3*time.Second, "with -screen, how long to wait before the capture")

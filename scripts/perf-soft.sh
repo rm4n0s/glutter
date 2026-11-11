@@ -11,7 +11,7 @@
 #   -b backend   only that display server (default both)
 #
 # Environment:
-#   PERF_TAGS    build tags of the editor (default glutter_release: no debug checks)
+#   PERF_TAGS    build tags of the editor (default none: a release build, no debug checks)
 #   HEADLESS_SIZE, HEADLESS_SCALE   the output (default 1280x800 at 1; the window is 820x460)
 #
 # Needs sway (scripts/headless-wayland.sh), Xvfb (scripts/headless-x11.sh) and xdotool. The CPU time
@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "usage: $0 [-s seconds] [-r repeats] [-b wayland|x11]" >&2; exit 64 ;;
   esac
 done
-tags="${PERF_TAGS:-glutter_release}"
+tags="${PERF_TAGS:-}"
 
 if [[ -z "$inner" ]]; then
   bin="$(mktemp -d)"

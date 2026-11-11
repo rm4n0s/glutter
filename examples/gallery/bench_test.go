@@ -18,7 +18,7 @@ import (
 // a frame of the real gallery, at the size of a 1080p display with a pixel ratio of
 // 1.25. Run them without the debug checks, which cost about ten times as much:
 //
-//	go test -tags glutter_release ./examples/gallery -run xxx -bench . -benchmem
+//	go test ./examples/gallery -run xxx -bench . -benchmem
 
 func benchGallery(b *testing.B, page string, animate bool) *gluttertest.Tester {
 	b.Helper()

@@ -14,8 +14,9 @@ import (
 
 // BuildAPK builds a package of the module for x86_64 (the emulator's ABI) into dir and returns
 // the APK and its application ID. The debug key is the harness's own, in root/user, so that the
-// tests never touch the developer's config directory. Extra options (a permission, an app ID) go
-// in opts.
+// tests never touch the developer's config directory. It is a debug build (-tags debug_mode), as
+// the tests drive the apps through the hooks that only debug builds read (GLUTTER_DEV_*). Extra
+// options (a permission, an app ID) go in opts.
 //
 // Flutter: no counterpart
 func (e *Emulator) BuildAPK(ctx context.Context, pkg, dir string, opts androidtool.BuildOptions) (apk, appID string, err error) {
@@ -32,6 +33,7 @@ func (e *Emulator) BuildAPK(ctx context.Context, pkg, dir string, opts androidto
 	opts.ABIs = []string{"amd64"}
 	opts.Out = filepath.Join(dir, filepath.Base(pkg)+".apk")
 	opts.ConfigDir = filepath.Join(e.Root, "debug-key")
+	opts.Debug = true
 	res, err := androidtool.Build(ctx, sdk, androidtool.ExecRunner{}, opts)
 	if err != nil {
 		return "", "", err

@@ -42,7 +42,7 @@ type perfDeps struct {
 type perfOptions struct {
 	// pkg is the package to build.
 	pkg string
-	// build is the template of the builds: Package, Release, Key, Cert, AppID and so on. The
+	// build is the template of the builds: Package, Debug, Key, Cert, AppID and so on. The
 	// ABIs and the output file are set for each build.
 	build androidtool.BuildOptions
 	// abis are the ABIs to build, one APK each and one with all of them.
@@ -87,7 +87,7 @@ func measurePerf(ctx context.Context, d perfDeps, o perfOptions) (*perfReport, e
 		o.timeouts = defaultTimeouts()
 	}
 	m := &measurer{d: d, o: o}
-	rep := &perfReport{Package: o.pkg, Release: o.build.Release, Env: envList(o.extras)}
+	rep := &perfReport{Package: o.pkg, Release: !o.build.Debug, Env: envList(o.extras)}
 
 	// The device first: a device that runs none of the ABIs fails before the builds.
 	if err := m.deviceInfo(ctx, rep); err != nil {

@@ -54,7 +54,7 @@ func TestRenderText(t *testing.T) {
 	}
 	const want = `glutter-android perf
 app:         ./examples/gallery
-build:       debug
+build:       debug (-tags debug_mode)
 device:      emulator-5584 sdk_gphone64_x86_64, Android 16 (API 37), runs x86_64
 renderer:    vulkan: Adreno (TM) 740
 environment: GLUTTER_DEV_EVENTS=wait:1s;swipe:540,1800,540,600,300 GLUTTER_GALLERY_PAGE=data

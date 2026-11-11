@@ -22,8 +22,9 @@ type BuildOptions struct {
 	Out string
 	// Simulator builds for the iOS Simulator (arm64, signed ad hoc) and not for a device.
 	Simulator bool
-	// Release builds with -tags glutter_release and -ldflags=-s -w.
-	Release bool
+	// Debug builds with -tags debug_mode (foundation.DebugMode) and does not strip the program; without it the build
+	// is a release, stripped with -ldflags=-s -w.
+	Debug bool
 	// Team and Profile are the developer team (its ten characters) and the provisioning profile file of a build for a device; both or
 	// neither. The owner has them; the tool only signs with them.
 	Team, Profile string
@@ -176,8 +177,10 @@ func (o BuildOptions) iconPNG() ([]byte, error) {
 // compile runs `go build` and reads the file it wrote.
 func (o BuildOptions) compile(ctx context.Context, tc Toolchain, out string) ([]byte, error) {
 	args := []string{"build", "-o", out}
-	if o.Release {
-		args = append(args, "-tags", "glutter_release", "-ldflags=-s -w")
+	if o.Debug {
+		args = append(args, "-tags", "debug_mode")
+	} else {
+		args = append(args, "-ldflags=-s -w")
 	}
 	args = append(args, o.Package)
 	var log bytes.Buffer

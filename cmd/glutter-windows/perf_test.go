@@ -28,7 +28,7 @@ func TestPerfUsageErrors(t *testing.T) {
 		{name: "zero starts", args: []string{"perf", "-starts", "0", "./examples/counter"}, route: "run->runPerf." + tagWindowsPerfBadCount, in: "at least 1"},
 		{name: "zero seconds", args: []string{"perf", "-seconds", "0", "./examples/counter"}, route: "run->runPerf." + tagWindowsPerfBadCount},
 		{name: "an env that is not GLUTTER_", args: []string{"perf", "-env", "HOME=/x", "./examples/counter"}, route: "run->runPerf->parseEnvs." + tagWindowsUsage},
-		{name: "dev events need a debug build", args: []string{"perf", "-env", "GLUTTER_DEV_EVENTS=wait:1s", "./examples/counter"}, route: "run->runPerf." + tagWindowsPerfDevEventsRelease, in: "-release=false"},
+		{name: "dev events need a debug build", args: []string{"perf", "-env", "GLUTTER_DEV_EVENTS=wait:1s", "./examples/counter"}, route: "run->runPerf." + tagWindowsPerfDevEventsRelease, in: "add -debug"},
 		{name: "amd64 is the architecture that runs", args: []string{"perf", "-arch", "arm64", "./examples/counter"}, route: "run->runPerf." + tagWindowsPerfBadArch, in: "amd64"},
 	}
 	for _, tt := range tests {
@@ -216,7 +216,7 @@ func TestRenderTextAndMarkdown(t *testing.T) {
 		want   []string
 	}{
 		{"text", []string{
-			"glutter-windows perf\n", "app:         ./examples/gallery\n", "build:       release (-tags glutter_release, stripped)\n",
+			"glutter-windows perf\n", "app:         ./examples/gallery\n", "build:       release (stripped)\n",
 			"renderer:    d3d12: NVIDIA GeForce GTX 470 (10DE:06CD)\n", ".exe size\n", "amd64", "37.00", "35.00",
 			"Cold start", "empty", "warm", "10 / 0", "0 / 10", "median", "Idle CPU (no input", "1.20", "2.00", "counter.exe (the app)",
 			"Frame times (GLUTTER_FRAME_STATS=1, 2 s after the first frame)", "FPS mean (min, max)", "59.0 (58, 60)", "Frame times per second",

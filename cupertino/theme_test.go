@@ -164,6 +164,7 @@ func TestIconThemeOfCreatesADependencyOnTheIconTheme(t *testing.T) {
 }
 
 func TestThemeDiagnostics(t *testing.T) {
+	skipUnlessDebug(t) // diagnostics are empty in a release build
 	b := foundation.NewDiagnosticPropertiesBuilder()
 	cupertino.NewCupertinoThemeData().DebugFillProperties(b)
 	var names []string

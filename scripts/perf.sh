@@ -10,7 +10,7 @@
 #   -s seconds   how long the idle CPU and the gallery's frames are measured (default 10)
 #
 # Environment:
-#   PERF_TAGS    build tags of the examples (default glutter_release: no debug checks)
+#   PERF_TAGS    build tags of the examples (default none: a release build, no debug checks)
 #   HEADLESS_SIZE, HEADLESS_SCALE   the output (default 1920x1080 at 1.25, the display of
 #                SPEC §15); the windows are tiled over it
 #
@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
     *) echo "usage: $0 [-n runs] [-s seconds]" >&2; exit 64 ;;
   esac
 done
-tags="${PERF_TAGS:-glutter_release}"
+tags="${PERF_TAGS:-}"
 
 if [[ $inner -eq 0 ]]; then
   bin="$(mktemp -d)"

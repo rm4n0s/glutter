@@ -38,6 +38,7 @@ func TestEveryExampleDrawsItsFirstFrameOnIOS(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
 			defer cancel()
 			res, err := iostool.Build(ctx, iostool.BuildOptions{
+				Debug:   true,
 				Package: "./examples/" + name, Dir: "..", Out: filepath.Join(t.TempDir(), name+".app"), Simulator: true, ID: "dev.glutter.example." + name,
 			})
 			if err != nil {

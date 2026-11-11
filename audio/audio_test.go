@@ -398,6 +398,9 @@ func TestPauseInBackgroundIsOnForAndroidByDefault(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if !foundation.DebugMode {
+				t.Skip("the platform override is a debug-only feature")
+			}
 			foundation.SetDebugDefaultTargetPlatformOverride(tt.platform)
 			t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
 			_, _, _, td := setup(t, tt.opts)

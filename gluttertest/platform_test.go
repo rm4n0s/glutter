@@ -21,6 +21,9 @@ func (f *pinTB) runCleanups() {
 }
 
 func TestPinPlatformFor(t *testing.T) {
+	if !foundation.DebugMode {
+		t.Skip("the platform override is a debug-only feature")
+	}
 	none := foundation.None[foundation.TargetPlatform]()
 	tests := []struct {
 		name     string

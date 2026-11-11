@@ -92,9 +92,9 @@ func kbMB(kb int) string         { return fmt.Sprintf("%.1f", float64(kb)/1024) 
 
 // document turns the report into the tables that both formats print.
 func (r *perfReport) document() reportDoc {
-	build := "debug"
+	build := "debug (-tags debug_mode)"
 	if r.Release {
-		build = "release (-tags glutter_release, stripped)"
+		build = "release (stripped)"
 	}
 	dev := r.Device.Serial
 	if r.Device.Model != "" {

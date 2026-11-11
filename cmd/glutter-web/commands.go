@@ -21,12 +21,13 @@ import (
 
 // buildFlags are the flags the commands share.
 type buildFlags struct {
-	release bool
-	host    string
+	debug bool
+	host  string
 }
 
-func (b *buildFlags) add(fs *flag.FlagSet) {
-	fs.BoolVar(&b.release, "release", false, "build with -tags glutter_release and -ldflags=-s -w")
+// add declares the flags; debug is the default of -debug (true for shot, whose hooks only debug builds read).
+func (b *buildFlags) add(fs *flag.FlagSet, debug bool) {
+	fs.BoolVar(&b.debug, "debug", debug, "build with -tags debug_mode, not stripped (a release build, stripped with -ldflags=-s -w, otherwise)")
 	fs.StringVar(&b.host, "host", "", "CSS selector of the element the view fills (default: the whole page)")
 }
 
@@ -47,12 +48,12 @@ func runBuild(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	fs.SetOutput(stderr)
 	out := fs.String("o", "web-build", "the directory to write the build to")
 	var bf buildFlags
-	bf.add(fs)
+	bf.add(fs, false)
 	pkg, err := parse(fs, args)
 	if err != nil {
 		return err
 	}
-	res, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: *out, Release: bf.release, HostElement: bf.host})
+	res, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: *out, Debug: bf.debug, HostElement: bf.host})
 	if err != nil {
 		return err
 	}
@@ -65,7 +66,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	fs.SetOutput(stderr)
 	addr := fs.String("addr", ":8080", "the address to listen on")
 	var bf buildFlags
-	bf.add(fs)
+	bf.add(fs, false)
 	pkg, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -75,7 +76,7 @@ func runServe(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 		return errors.NewErr(tagWebServeFailed, err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
-	if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
+	if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: dir, Debug: bf.debug, HostElement: bf.host}); err != nil {
 		return err
 	}
 	ln, err := net.Listen("tcp", *addr)
@@ -149,7 +150,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var query queryFlag
 	fs.Var(&query, "query", "a query string added to the URL, such as GLUTTER_DEV_TAPS=3 (may be repeated)")
 	var bf buildFlags
-	bf.add(fs)
+	bf.add(fs, true)
 	pkg, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -166,7 +167,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		return errors.NewErr(tagWebServeFailed, err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
-	if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
+	if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: pkg, OutDir: dir, Debug: bf.debug, HostElement: bf.host}); err != nil {
 		return err
 	}
 	q := url.Values(query)
@@ -213,7 +214,7 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var query queryFlag
 	fs.Var(&query, "query", "a query string added to the URL, such as GLUTTER_GALLERY_PAGE=data (may be repeated)")
 	var bf buildFlags
-	bf.add(fs)
+	bf.add(fs, false)
 	if err := fs.Parse(args); err != nil {
 		return errors.NewErr(tagWebUsage, err)
 	}
@@ -230,7 +231,7 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 			return errors.NewErr(tagWebServeFailed, err)
 		}
 		defer func() { _ = os.RemoveAll(dir) }() // a temporary directory: a leftover is harmless
-		if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: fs.Arg(0), OutDir: dir, Release: bf.release, HostElement: bf.host}); err != nil {
+		if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: fs.Arg(0), OutDir: dir, Debug: bf.debug, HostElement: bf.host}); err != nil {
 			return err
 		}
 	}

@@ -41,7 +41,7 @@ type perfDeps struct {
 type perfOptions struct {
 	// pkg is the package to build.
 	pkg string
-	// build is the template of the build: Release, Name, AppID and so on. The architectures and the
+	// build is the template of the build: Debug, Name, AppID and so on. The architectures and the
 	// output are set here.
 	build wintool.BuildOptions
 	// archs are the architectures to build: amd64 runs under Wine, the others are only sized.
@@ -98,7 +98,7 @@ func measurePerf(ctx context.Context, d perfDeps, o perfOptions) (*perfReport, e
 		o.timeouts = defaultTimeouts()
 	}
 	m := &measurer{d: d, o: o}
-	rep := &perfReport{Package: o.pkg, Release: o.build.Release, Env: append([]string(nil), o.extras...)}
+	rep := &perfReport{Package: o.pkg, Release: !o.build.Debug, Env: append([]string(nil), o.extras...)}
 	sort.Strings(rep.Env)
 	if err := m.buildAll(ctx, rep); err != nil {
 		return nil, err

@@ -15,7 +15,7 @@ import (
 // buildFlags are the flags that make a bundle: those of `build`, and of `run`, `shot -bundle` and `perf`, which build one first.
 type buildFlags struct {
 	out, name, id, version, icon string
-	universal, hardened, release bool
+	universal, hardened, debug   bool
 	usage                        envFlags
 }
 
@@ -30,13 +30,13 @@ func (b *buildFlags) add(fs *flag.FlagSet, keepOut bool) {
 	fs.StringVar(&b.icon, "icon", "", "a square PNG for the icon (default: Glutter's icon)")
 	fs.BoolVar(&b.universal, "universal", false, "make one executable with an arm64 and an amd64 slice (default: this machine's architecture)")
 	fs.BoolVar(&b.hardened, "hardened", false, "sign with the hardened runtime and the entitlements of the microphone, as a notarized app needs")
-	fs.BoolVar(&b.release, "release", false, "build with -tags glutter_release and -ldflags=-s -w")
+	fs.BoolVar(&b.debug, "debug", false, "build with -tags debug_mode, not stripped (a release build, stripped with -ldflags=-s -w, otherwise)")
 	fs.Var(&b.usage, "usage", "a usage string for the plist, KEY=text (repeatable), such as NSCameraUsageDescription=...")
 }
 
 // options makes the options of mactool.Build.
 func (b *buildFlags) options(pkg string) (mactool.BuildOptions, error) {
-	o := mactool.BuildOptions{Package: pkg, Out: b.out, Name: b.name, ID: b.id, Version: b.version, Icon: b.icon, Release: b.release,
+	o := mactool.BuildOptions{Package: pkg, Out: b.out, Name: b.name, ID: b.id, Version: b.version, Icon: b.icon, Debug: b.debug,
 		Hardened: b.hardened, Usage: map[string]string{}}
 	if b.universal {
 		o.Archs = []string{"arm64", "amd64"}

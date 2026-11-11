@@ -34,6 +34,7 @@ func TestEveryAndroidExampleBuilds(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			defer cancel()
 			res, err := androidtool.Build(ctx, sdk, androidtool.ExecRunner{}, androidtool.BuildOptions{
+				Debug:     true,
 				Package:   "./examples/" + name,
 				Dir:       "..",
 				Out:       filepath.Join(t.TempDir(), name+".apk"),

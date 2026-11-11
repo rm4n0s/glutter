@@ -33,6 +33,7 @@ func inputSite(t *testing.T) string {
 			return
 		}
 		_, inputErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/platform/web/inputtest", Dir: webtest.ModuleRoot(t), OutDir: inputDir,
 		})
 	})

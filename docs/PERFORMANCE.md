@@ -20,7 +20,7 @@ compositor's process and in ours), and the cold start and the resident memory in
 software driver. The numbers must be taken again on the reference hardware before 1.0
 (see "Pending").
 
-The targets are for release builds (`-tags glutter_release`). Debug builds check the
+The targets are for release builds (the default, without the tag `debug_mode`). Debug builds check the
 thread of every call and the invariants of the framework, and are 8–10 times slower on
 the frames of the framework (most of it `UIThread.AssertCurrent`).
 
@@ -28,7 +28,7 @@ the frames of the framework (most of it `UIThread.AssertCurrent`).
 
 ```
 # the framework alone (UI thread, no display)
-go test -tags glutter_release ./widgets ./rendering ./examples/gallery ./internal/gpu/soft -run xxx -bench . -benchmem
+go test ./widgets ./rendering ./examples/gallery ./internal/gpu/soft -run xxx -bench . -benchmem
 
 # the numbers that need a running app: idle CPU, cold start, memory, the gallery's frames
 scripts/perf.sh -n 7 -s 10
@@ -42,7 +42,7 @@ scripts/perf-windows.sh -m
 # the web numbers (step 21.7): sizes, start, idle CPU, frames, a full rebuild, clicks; Chromium and Firefox
 scripts/perf-web.sh
 # the framework in WebAssembly under Node (the same V8 as Chromium's): add -cpuprofile with node --cpu-prof
-GOOS=js GOARCH=wasm go test -tags glutter_release ./examples/gallery -run xxx -bench 'Gallery' -benchmem
+GOOS=js GOARCH=wasm go test ./examples/gallery -run xxx -bench 'Gallery' -benchmem
 ```
 
 `GLUTTER_FRAME_STATS=1` makes a running app log its frame times (and the stages of the
@@ -360,7 +360,7 @@ The same benchmarks on the Mac of step 33.9 (an Apple M6, unified memory, macOS 
 
 ## Cupertino (step 34.10)
 
-The three benchmarks of SPEC §31.5 (`cupertino/bench_test.go`), the UI thread's time and allocations for a frame at 1536 x 864 with a pixel ratio of 1.25, on the Mac of step 33.15 (an Apple M6), without the debug checks: `go test -tags glutter_release ./cupertino -run xxx -bench . -benchmem -benchtime 200x -count 3`. The framework only (no renderer, scenes discarded), as the gallery's benchmarks of SPEC §15. Three runs each; the spread is under 5% except for the worst frame.
+The three benchmarks of SPEC §31.5 (`cupertino/bench_test.go`), the UI thread's time and allocations for a frame at 1536 x 864 with a pixel ratio of 1.25, on the Mac of step 33.15 (an Apple M6), without the debug checks: `go test ./cupertino -run xxx -bench . -benchmem -benchtime 200x -count 3`. The framework only (no renderer, scenes discarded), as the gallery's benchmarks of SPEC §15. Three runs each; the spread is under 5% except for the worst frame.
 
 | What | Time of a frame | Allocated by a frame | Target (SPEC §15) |
 |---|---|---|---|
@@ -626,7 +626,7 @@ benchmarks of `internal/text/layout` (`bench_test.go`) measure a line of 100 col
 50 such lines:
 
 ```
-go test -tags glutter_release ./internal/text/layout -run xxx -bench Code -benchmem
+go test ./internal/text/layout -run xxx -bench Code -benchmem
 ```
 
 | Benchmark | What it measures | 5 spans | 10 spans | 20 spans |
@@ -664,7 +664,7 @@ works out of a text between builds (SPEC §10, "Shaped run cache"). The same ben
 Go Mono in 5, 10 and 20 spans); `forgetText` empties the caches for the cold ones:
 
 ```
-go test -tags glutter_release ./internal/text/layout -run xxx -bench Code -benchmem
+go test ./internal/text/layout -run xxx -bench Code -benchmem
 ```
 
 **The profile that decided the work** (`CodeLineBuild` and `CodePage` before the step; the

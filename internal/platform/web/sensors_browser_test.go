@@ -36,6 +36,7 @@ func sensorSite(t *testing.T) string {
 			return
 		}
 		_, sensorErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/platform/web/sensortest", Dir: webtest.ModuleRoot(t), OutDir: sensorDir,
 		})
 	})

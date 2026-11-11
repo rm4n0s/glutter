@@ -34,6 +34,7 @@ func desktopSite(t *testing.T) string {
 			return
 		}
 		_, desktopErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/platform/web/desktoptest", Dir: webtest.ModuleRoot(t), OutDir: desktopDir,
 		})
 	})

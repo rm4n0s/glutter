@@ -36,7 +36,7 @@ func TestEveryExampleDrawsItsFirstFrameOnMacOS(t *testing.T) {
 			dir := t.TempDir()
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
-			res, err := mactool.Build(ctx, mactool.BuildOptions{Package: "./examples/" + name, Dir: "..", Out: filepath.Join(dir, name+".app"), Name: name})
+			res, err := mactool.Build(ctx, mactool.BuildOptions{Debug: true, Package: "./examples/" + name, Dir: "..", Out: filepath.Join(dir, name+".app"), Name: name})
 			if err != nil {
 				t.Fatalf("glutter-macos build ./examples/%s: %v", name, err)
 			}

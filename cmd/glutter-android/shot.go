@@ -33,6 +33,9 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var envs listFlag
 	bf.add(fs, false)
 	df.add(fs)
+	// shot makes a debug build unless told otherwise: the hooks it drives (GLUTTER_DEV_*) are read only by debug builds.
+	bf.debug = true
+	fs.Lookup("debug").DefValue = "true"
 	fs.Var(&envs, "env", "an environment variable for the app, GLUTTER_X=v (repeatable)")
 	avd := fs.String("avd", "glutter-37", "the virtual device to start when no -device is given")
 	renderer := fs.String("renderer", "", "the renderer: auto, vulkan, gles or soft (GLUTTER_RENDERER)")

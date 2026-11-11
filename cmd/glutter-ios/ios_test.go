@@ -44,7 +44,7 @@ func TestBuildFlagsBecomeOptions(t *testing.T) {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	var bf buildFlags
 	bf.add(fs, true)
-	pkg, err := parseWith(fs, []string{"-sim", "-o", "X.app", "-name", "X", "-id", "dev.glutter.x", "-version", "2", "-release",
+	pkg, err := parseWith(fs, []string{"-sim", "-o", "X.app", "-name", "X", "-id", "dev.glutter.x", "-version", "2", "-debug",
 		"-orientations", "portrait, landscape-left", "-usage", "NSCameraUsageDescription=to scan", "-usage", "A=b=c", "./examples/x"}, io.Discard)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestBuildFlagsBecomeOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.Package != "./examples/x" || !o.Simulator || o.Out != "X.app" || o.Name != "X" || o.ID != "dev.glutter.x" || o.Version != "2" || !o.Release {
+	if o.Package != "./examples/x" || !o.Simulator || o.Out != "X.app" || o.Name != "X" || o.ID != "dev.glutter.x" || o.Version != "2" || !o.Debug {
 		t.Errorf("options = %+v", o)
 	}
 	if want := []string{iostool.OrientationPortrait, iostool.OrientationLandscapeLeft}; !slices.Equal(o.Orientations, want) {

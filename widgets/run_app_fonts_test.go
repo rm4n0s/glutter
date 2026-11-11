@@ -141,7 +141,7 @@ func TestLoadFontFromListLaysTheTextOutAgain(t *testing.T) {
 	if err := bt.d.LoadFontFromList(gomono.TTF, "Go Mono"); err != nil {
 		t.Fatalf("LoadFontFromList: %v", err)
 	}
-	if !p.DebugNeedsLayout() {
+	if foundation.DebugMode && !p.DebugNeedsLayout() { // DebugNeedsLayout is false in a release build
 		t.Error("the paragraph was not marked as needing layout")
 	}
 	bt.frame()

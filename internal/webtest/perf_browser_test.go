@@ -16,7 +16,7 @@ import (
 // browser is read, and a click on the floating action button is answered by a frame.
 func TestBrowserPerfMeasuresTheCounter(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := webtool.Build(context.Background(), webtool.BuildOptions{Package: "./examples/counter", Dir: ModuleRoot(t), OutDir: dir, Release: true}); err != nil {
+	if _, err := webtool.Build(context.Background(), webtool.BuildOptions{Package: "./examples/counter", Dir: ModuleRoot(t), OutDir: dir}); err != nil {
 		t.Fatal(err)
 	}
 	EachBrowser(t, func(t *testing.T, b Browser) {

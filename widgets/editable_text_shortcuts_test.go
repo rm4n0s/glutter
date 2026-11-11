@@ -589,6 +589,7 @@ func TestEditableTextShortcutsWindowsEndContinuesAtWrap(t *testing.T) {
 		{foundation.TargetPlatformWindows, collapsedUp(40)},
 	} {
 		t.Run(tc.platform.String(), func(t *testing.T) {
+			skipUnlessDebug(t) // the platform override is a debug-only feature
 			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(tc.platform))
 			t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
 			f := newEditableFixture(t, testSoftwrapText, collapsedUp(20), fieldOpts{width: width})

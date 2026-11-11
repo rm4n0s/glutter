@@ -28,7 +28,14 @@ goflags="$(go env GOFLAGS)"
 gobin="$(command -v go)"
 
 args=("$@")
-if [[ ${#args[@]} -eq 0 ]]; then
+# The default packages are used when the arguments name none: only flags, such as -tags debug_mode.
+haspkg=0
+for a in ${args[@]+"${args[@]}"}; do
+  case "$a" in
+    .|./*|../*|github.com/*) haspkg=1 ;;
+  esac
+done
+if [[ $haspkg -eq 0 ]]; then
   # A loop, not mapfile: the bash of macOS is 3.2, which has no mapfile.
   while IFS= read -r pkg; do
     args+=("$pkg")

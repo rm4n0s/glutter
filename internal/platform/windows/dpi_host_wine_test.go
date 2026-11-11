@@ -26,7 +26,7 @@ func TestScaleFollowsTheDPIOfTheDisplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(t.TempDir(), "windows.test.exe")
-	build := exec.Command("go", "test", "-c", "-tags", "glutter_wine", "-o", exe, "./internal/platform/windows")
+	build := exec.Command("go", "test", "-c", "-tags", "glutter_wine debug_mode", "-o", exe, "./internal/platform/windows")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {

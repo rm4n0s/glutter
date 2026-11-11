@@ -111,8 +111,14 @@ func App(text string) widgets.Widget {
 // Flutter: no counterpart
 func Tester(tb testing.TB, lines int, discard bool) *gluttertest.Tester {
 	tb.Helper()
-	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformLinux))
-	tb.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	switch {
+	case foundation.DebugMode:
+		foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformLinux))
+		tb.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	case foundation.DefaultTargetPlatform() != foundation.TargetPlatformLinux:
+		// A release build has no platform override (foundation.SetDebugDefaultTargetPlatformOverride).
+		tb.Skip("the editor's scenes are the Linux desktop's: on another host they need a debug build (-tags debug_mode)")
+	}
 	ts := gluttertest.New(tb, gluttertest.Opts{Size: ui.Size{Width: Width, Height: Height}, DiscardScenes: discard})
 	ts.PumpWidget(App(Text(lines)))
 	ts.Pump(50 * time.Millisecond)

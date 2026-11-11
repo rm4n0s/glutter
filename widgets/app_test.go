@@ -116,6 +116,7 @@ func TestWidgetsApp(t *testing.T) {
 			{foundation.TargetPlatformIOS, services.LogicalKeyboardKeySelect, false},
 			{foundation.TargetPlatformMacOS, services.LogicalKeyboardKeyEnter, true},
 		}
+		skipUnlessDebug(t) // the platform override is a debug-only feature
 		for _, tt := range tests {
 			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(tt.platform))
 			ts := gluttertest.New(t)

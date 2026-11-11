@@ -353,12 +353,12 @@ and no tray).
 
 ```sh
 go run ./cmd/glutter-web serve ./examples/gallery          # builds, serves at http://localhost:8080/
-go run ./cmd/glutter-web build -release -o dist ./examples/counter   # a directory for any static server
+go run ./cmd/glutter-web build -o dist ./examples/counter   # a directory for any static server
 go run ./cmd/glutter-web shot -browser firefox -o gallery.png ./examples/gallery
 ```
 
-`build` writes `index.html` (the loader), `wasm_exec.js`, `app.wasm` and `app.wasm.gz`; `-release`
-builds with `-tags glutter_release -ldflags=-s -w`. Serve the `.gz` with `Content-Encoding: gzip`
+`build` writes `index.html` (the loader), `wasm_exec.js`, `app.wasm` and `app.wasm.gz`; it is a release
+build, stripped with `-ldflags=-s -w` (`-debug` builds with `-tags debug_mode` instead). Serve the `.gz` with `Content-Encoding: gzip`
 and `app.wasm` as `application/wasm`, which `glutter-web serve` does. The page needs no
 configuration; `globalThis.glutterConfig.hostElement` (a CSS selector, set in `index.html`) puts the
 view in an element instead of the whole page.
@@ -401,12 +401,12 @@ Glutter runs on Android 8.0 (API 26) and later, on arm64 and x86_64 (Android is 
 
 ```sh
 go run ./cmd/glutter-android run ./examples/gallery            # builds, installs, starts, streams the log
-go run ./cmd/glutter-android build -release -key key.pk8 -cert cert.pem -o gallery.apk ./examples/gallery
+go run ./cmd/glutter-android build -key key.pk8 -cert cert.pem -o gallery.apk ./examples/gallery
 go run ./cmd/glutter-android shot -screen -o gallery.png ./examples/gallery
 scripts/perf-android.sh -m                                      # sizes, start, CPU, frames, memory
 ```
 
-`build` makes one APK for both ABIs (`-abi arm64` for one); `-release` builds with `-tags glutter_release` and strips the program. `-env GLUTTER_X=v` (repeatable, on `run` and `shot`) reaches the app's environment as an intent extra, as the web's query parameters do. The app's `HOME` is its files directory, `slog` goes to `logcat` with the level as the priority (`adb logcat -s <app id>`), and `GLUTTER_RENDERER=vulkan|gles|soft` chooses the renderer (the default is Vulkan where the device's driver is good, then OpenGL ES, then the CPU).
+`build` makes one APK for both ABIs (`-abi arm64` for one); the program is a stripped release build (`-debug` builds with `-tags debug_mode`), and the APK is signed with the debug key and debuggable unless `-key` and `-cert` are given, which make a store APK. `-env GLUTTER_X=v` (repeatable, on `run` and `shot`) reaches the app's environment as an intent extra, as the web's query parameters do. The app's `HOME` is its files directory, `slog` goes to `logcat` with the level as the priority (`adb logcat -s <app id>`), and `GLUTTER_RENDERER=vulkan|gles|soft` chooses the renderer (the default is Vulkan where the device's driver is good, then OpenGL ES, then the CPU).
 
 **What works:** everything of the framework, Material 3, touch, stylus and mouse, the soft keyboard and input methods (composition, actions, the keyboard's height as `ViewInsets`), the clipboard, the back button and the predictive back gesture, the status and navigation bars, the system's fonts and emoji, TalkBack, system settings (dark mode, text size, languages, 24-hour clock, reduced motion), the overscroll glow and stretch, the text selection toolbar and magnifier, spell check, `desktop.OpenURI` and notifications.
 
@@ -422,7 +422,7 @@ Glutter runs on Windows 10 (version 1809) and later, on amd64 and arm64, and it 
 
 ```sh
 go run ./cmd/glutter-windows build -o gallery.exe ./examples/gallery          # an .exe with its manifest and icon
-go run ./cmd/glutter-windows build -release -arch amd64,arm64 -o app.exe ./your/app   # app_amd64.exe and app_arm64.exe
+go run ./cmd/glutter-windows build -arch amd64,arm64 -o app.exe ./your/app   # app_amd64.exe and app_arm64.exe
 go run ./cmd/glutter-windows run ./examples/gallery            # builds, then starts it (on Linux, under Wine)
 go run ./cmd/glutter-windows shot -o gallery.png ./examples/gallery   # the frame the app draws
 scripts/perf-windows.sh -m                                     # sizes, start, CPU, frames, memory (Wine's numbers)
@@ -446,7 +446,7 @@ Glutter runs on macOS 12 (Monterey) and later, on Apple silicon and Intel, and i
 
 ```sh
 go run ./cmd/glutter-macos build -o Gallery.app ./examples/gallery            # a signed bundle, with its plist and icon
-go run ./cmd/glutter-macos build -release -universal -o App.app ./your/app    # one executable for arm64 and amd64
+go run ./cmd/glutter-macos build -universal -o App.app ./your/app    # one executable for arm64 and amd64
 go run ./cmd/glutter-macos run ./examples/gallery                             # builds the bundle, starts it, shows its log
 go run ./cmd/glutter-macos shot -bundle -o gallery.png ./examples/gallery     # the frame the app draws, with no screen recording
 scripts/perf-macos.sh -m                                                      # size, start, CPU, frames, memory
@@ -511,7 +511,7 @@ Each one uses only the public packages and has tests that run on a fake platform
 
 ## Performance
 
-On release builds (`-tags glutter_release`) an animation-only frame costs microseconds on the UI
+On release builds (the default; `-tags debug_mode` makes a debug build) an animation-only frame costs microseconds on the UI
 thread, a full rebuild of the gallery page about 4 ms, and an idle app uses no CPU.
 [docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the numbers, the machine they were measured on and
 the targets that are not met yet. On Windows the numbers under Wine (`scripts/perf-windows.sh`) are for

@@ -32,7 +32,7 @@ func TestBrowserEveryWebExampleDrawsItsFirstFrame(t *testing.T) {
 			t.Cleanup(func() { _ = os.RemoveAll(out) }) // a temporary directory: a leftover is harmless
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			if _, err := webtool.Build(ctx, webtool.BuildOptions{Package: "./examples/" + name, Dir: root, OutDir: out}); err != nil {
+			if _, err := webtool.Build(ctx, webtool.BuildOptions{Debug: true, Package: "./examples/" + name, Dir: root, OutDir: out}); err != nil {
 				t.Fatalf("building %s for the web: %v", name, err)
 			}
 			webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {

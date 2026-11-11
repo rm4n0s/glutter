@@ -366,7 +366,7 @@ func TestBuildMakesAUniversalSignedBundle(t *testing.T) {
 	needGo(t)
 	dir := tinyModule(t, tinyMain)
 	out := filepath.Join(t.TempDir(), "Tiny.app")
-	res, err := Build(context.Background(), BuildOptions{Package: ".", Dir: dir, Out: out, Archs: []string{"arm64", "amd64"}, Release: true, Version: "3.1.4"})
+	res, err := Build(context.Background(), BuildOptions{Package: ".", Dir: dir, Out: out, Archs: []string{"arm64", "amd64"}, Version: "3.1.4"})
 	if err != nil {
 		t.Fatal(err)
 	}

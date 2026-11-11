@@ -114,16 +114,16 @@ perf() {
 
 for t in ${tests//,/ }; do
   case "$t" in
-    counter) perf "counter (release)" 1800 -release=true ./examples/counter ;;
-    gallery) perf "gallery, home page (release)" 1800 -release=true ./examples/gallery ;;
+    counter) perf "counter (release)" 1800 ./examples/counter ;;
+    gallery) perf "gallery, home page (release)" 1800 ./examples/gallery ;;
     animation)
-      perf "gallery, an animation with no input (release)" 1800 -release=true -seconds "$gseconds" -starts 1 \
+      perf "gallery, an animation with no input (release)" 1800 -seconds "$gseconds" -starts 1 \
         -env GLUTTER_GALLERY_PAGE=data -env GLUTTER_GALLERY_ANIMATE=1 ./examples/gallery ;;
     rebuild)
-      perf "gallery, a full rebuild in every frame (release)" 1800 -release=true -seconds "$gseconds" -starts 1 \
+      perf "gallery, a full rebuild in every frame (release)" 1800 -seconds "$gseconds" -starts 1 \
         -env GLUTTER_GALLERY_PAGE=buttons -env GLUTTER_GALLERY_REBUILD=1 ./examples/gallery ;;
     navigation)
-      perf "gallery, scrolling, changing pages and the theme (debug build: dev events)" 2400 -release=false -seconds "$nseconds" -starts 1 \
+      perf "gallery, scrolling, changing pages and the theme (debug build: dev events)" 2400 -debug -seconds "$nseconds" -starts 1 \
         -env "GLUTTER_DEV_EVENTS=$events" ./examples/gallery ;;
     *) echo "perf-macos.sh: unknown test $t (counter, gallery, animation, rebuild, navigation)" >&2; exit 64 ;;
   esac

@@ -1,4 +1,4 @@
-//go:build !glutter_release && !glutter_profile
+//go:build debug_mode
 
 package foundation
 
@@ -495,3 +495,13 @@ func TestValuesEqual(t *testing.T) {
 		}
 	}
 }
+
+type exampleEnum int
+
+const (
+	exampleHello exampleEnum = iota
+	exampleWorld
+	exampleDeferToChild
+)
+
+func (e exampleEnum) Name() string { return [...]string{"hello", "world", "deferToChild"}[e] }

@@ -88,19 +88,19 @@ func TestBuildCommandLines(t *testing.T) {
 		wantExes  []string
 	}{
 		{"a GUI build for amd64", BuildOptions{Package: "./app"},
-			[][]string{{"build", "-o", "app.exe", "-ldflags=-H=windowsgui"}}, []string{"app.exe"}},
+			[][]string{{"build", "-o", "app.exe", "-ldflags=-H=windowsgui -s -w"}}, []string{"app.exe"}},
 		{"a console build", BuildOptions{Package: "./app", Console: true},
-			[][]string{{"build", "-o", "app.exe"}}, []string{"app.exe"}},
-		{"a release GUI build", BuildOptions{Package: "./app", Release: true},
-			[][]string{{"build", "-o", "app.exe", "-tags", "glutter_release", "-ldflags=-H=windowsgui -s -w"}}, []string{"app.exe"}},
-		{"a release console build", BuildOptions{Package: "./app", Release: true, Console: true},
-			[][]string{{"build", "-o", "app.exe", "-tags", "glutter_release", "-ldflags=-s -w"}}, []string{"app.exe"}},
+			[][]string{{"build", "-o", "app.exe", "-ldflags=-s -w"}}, []string{"app.exe"}},
+		{"a debug GUI build", BuildOptions{Package: "./app", Debug: true},
+			[][]string{{"build", "-o", "app.exe", "-tags", "debug_mode", "-ldflags=-H=windowsgui"}}, []string{"app.exe"}},
+		{"a debug console build", BuildOptions{Package: "./app", Debug: true, Console: true},
+			[][]string{{"build", "-o", "app.exe", "-tags", "debug_mode"}}, []string{"app.exe"}},
 		{"a name for the output", BuildOptions{Package: "./app", Out: "dist/My App.exe"},
-			[][]string{{"build", "-o", "dist/My App.exe", "-ldflags=-H=windowsgui"}}, []string{"dist/My App.exe"}},
+			[][]string{{"build", "-o", "dist/My App.exe", "-ldflags=-H=windowsgui -s -w"}}, []string{"dist/My App.exe"}},
 		{"two architectures", BuildOptions{Package: "./app", Archs: []string{"amd64", "arm64", "amd64"}},
-			[][]string{{"build", "-o", "app_amd64.exe", "-ldflags=-H=windowsgui"}, {"build", "-o", "app_arm64.exe", "-ldflags=-H=windowsgui"}}, []string{"app_amd64.exe", "app_arm64.exe"}},
+			[][]string{{"build", "-o", "app_amd64.exe", "-ldflags=-H=windowsgui -s -w"}, {"build", "-o", "app_arm64.exe", "-ldflags=-H=windowsgui -s -w"}}, []string{"app_amd64.exe", "app_arm64.exe"}},
 		{"arm64 alone keeps the name", BuildOptions{Package: "./app", Archs: []string{"arm64"}, Out: "x.exe"},
-			[][]string{{"build", "-o", "x.exe", "-ldflags=-H=windowsgui"}}, []string{"x.exe"}},
+			[][]string{{"build", "-o", "x.exe", "-ldflags=-H=windowsgui -s -w"}}, []string{"x.exe"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestBuildCommandLines(t *testing.T) {
 			if !slices.Equal(exes, tt.wantExes) {
 				t.Errorf("exes = %v, want %v", exes, tt.wantExes)
 			}
-			// go list runs once, with the architecture of the first build and the release tag.
+			// go list runs once, with the architecture of the first build and the debug tag when Debug.
 			list := f.cmds[0]
 			if list.Args[0] != "list" || !slices.Contains(list.Env, "GOOS=windows") || !slices.Contains(list.Env, "CGO_ENABLED=0") {
 				t.Errorf("the first command is %q with GOOS/CGO_ENABLED %v", list.String(), list.Env)

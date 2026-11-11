@@ -74,11 +74,11 @@ func TestBuildFlagsOptions(t *testing.T) {
 	fs.SetOutput(io.Discard)
 	var bf buildFlags
 	bf.add(fs, true)
-	if err := fs.Parse([]string{"-o", "x.exe", "-arch", "amd64, arm64", "-release", "-console", "-name", "N", "-app-id", "a.b", "-icon", "i.png", "-version", "1.2"}); err != nil {
+	if err := fs.Parse([]string{"-o", "x.exe", "-arch", "amd64, arm64", "-debug", "-console", "-name", "N", "-app-id", "a.b", "-icon", "i.png", "-version", "1.2"}); err != nil {
 		t.Fatal(err)
 	}
 	o := bf.options("./pkg")
-	if o.Package != "./pkg" || o.Out != "x.exe" || strings.Join(o.Archs, "|") != "amd64|arm64" || !o.Release || !o.Console ||
+	if o.Package != "./pkg" || o.Out != "x.exe" || strings.Join(o.Archs, "|") != "amd64|arm64" || !o.Debug || !o.Console ||
 		o.Name != "N" || o.AppID != "a.b" || o.Icon != "i.png" || o.Version != "1.2" {
 		t.Errorf("options %+v", o)
 	}

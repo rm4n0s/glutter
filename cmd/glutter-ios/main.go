@@ -31,7 +31,7 @@ func main() {
 }
 
 const usage = `usage:
-  glutter-ios build [-sim] [-o App.app] [-name n] [-id dev.x.y] [-version v] [-icon file.png] [-team ID -profile file.mobileprovision] [-identity name] [-release] [-orientations portrait,landscape-left,...] [-usage KEY=text]... <package>
+  glutter-ios build [-sim] [-o App.app] [-name n] [-id dev.x.y] [-version v] [-icon file.png] [-team ID -profile file.mobileprovision] [-identity name] [-debug] [-orientations portrait,landscape-left,...] [-usage KEY=text]... <package>
   glutter-ios run [build flags] [-device iphone|ipad] [-set dir] [-env GLUTTER_X=v]... <package>
   glutter-ios shot [-device iphone|ipad] [-set dir] [-screen] [-env GLUTTER_X=v]... [-timeout d] -o file.png <package>`
 

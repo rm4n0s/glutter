@@ -30,6 +30,7 @@ func TestEveryExampleBuildsForWindows(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 			defer cancel()
 			res, err := wintool.Build(ctx, wintool.ExecRunner{}, wintool.BuildOptions{
+				Debug:   true,
 				Package: "./examples/" + name, Dir: "..", Out: filepath.Join(t.TempDir(), name+".exe"), Archs: []string{"amd64", "arm64"},
 			})
 			if err != nil {

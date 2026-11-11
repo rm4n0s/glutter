@@ -544,7 +544,7 @@ func TestTheTriggersAreKeysFromHalfTheirTravel(t *testing.T) {
 	ts := gluttertest.New(t)
 	ts.PumpWidget(widgets.NewFocus(widgets.NewSizedBox(nil), widgets.FocusOpts{FocusNode: node, Autofocus: true,
 		OnKeyEvent: func(_ *widgets.FocusNode, e services.KeyEvent) widgets.KeyEventResult {
-			keys = append(keys, fmt.Sprintf("%T %s %v", e, e.LogicalKey().DebugName(), e.DeviceType()))
+			keys = append(keys, fmt.Sprintf("%T %v %v", e, e.LogicalKey(), e.DeviceType()))
 			return widgets.KeyEventResultHandled
 		}}))
 	ts.Pump()
@@ -555,10 +555,10 @@ func TestTheTriggersAreKeysFromHalfTheirTravel(t *testing.T) {
 	tp.SetAxis(gamepad.LeftTrigger, 0.1)
 	tp.Tap(gamepad.DPadUp)
 	want := []string{
-		"*services.KeyDownEvent Game Button Left 2 " + fmt.Sprint(ui.KeyEventDeviceTypeGamepad),
-		"*services.KeyUpEvent Game Button Left 2 " + fmt.Sprint(ui.KeyEventDeviceTypeGamepad),
-		"*services.KeyDownEvent Arrow Up " + fmt.Sprint(ui.KeyEventDeviceTypeDirectionalPad),
-		"*services.KeyUpEvent Arrow Up " + fmt.Sprint(ui.KeyEventDeviceTypeDirectionalPad),
+		fmt.Sprint("*services.KeyDownEvent ", services.LogicalKeyboardKeyGameButtonLeft2, " ", ui.KeyEventDeviceTypeGamepad),
+		fmt.Sprint("*services.KeyUpEvent ", services.LogicalKeyboardKeyGameButtonLeft2, " ", ui.KeyEventDeviceTypeGamepad),
+		fmt.Sprint("*services.KeyDownEvent ", services.LogicalKeyboardKeyArrowUp, " ", ui.KeyEventDeviceTypeDirectionalPad),
+		fmt.Sprint("*services.KeyUpEvent ", services.LogicalKeyboardKeyArrowUp, " ", ui.KeyEventDeviceTypeDirectionalPad),
 	}
 	if !reflect.DeepEqual(keys, want) {
 		t.Errorf("keys = %q, want %q", keys, want)

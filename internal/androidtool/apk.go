@@ -26,15 +26,18 @@ type BuildOptions struct {
 	Out string
 	// ABIs are the ABIs to build, by their short names ("arm64", "amd64"); all when empty.
 	ABIs []string
-	// Release builds with -tags glutter_release and -ldflags=-s -w, without the debuggable
-	// flag, and signs with Key and Cert.
-	Release bool
+	// Debug builds with -tags debug_mode (foundation.DebugMode) and does not strip the program;
+	// without it the program is a release, stripped with -ldflags=-s -w. It does not change how
+	// the APK is signed: Key and Cert do.
+	Debug bool
 	// AppID, Label and Permissions go into the manifest; AppID and Label have defaults.
 	AppID, Label string
 	Permissions  []string
 	// Icon is a PNG for the launcher; Glutter's icon when empty.
 	Icon string
-	// Key and Cert (PKCS#8 and X.509, as apksigner takes them) sign a release build.
+	// Key and Cert (PKCS#8 and X.509, as apksigner takes them) make a store APK: signed with
+	// them and without the debuggable flag. Without them the APK is signed with the debug key of
+	// ConfigDir and is debuggable, which adb run-as (and so glutter-android shot) needs.
 	Key, Cert string
 	// ConfigDir holds the debug key; $XDG_CONFIG_HOME/glutter/android-debug when empty.
 	ConfigDir string
@@ -65,6 +68,9 @@ type BuildResult struct {
 	LibSizes map[string]int64
 }
 
+// store says whether the APK is one for a store: signed with Key and Cert, not debuggable.
+func (o BuildOptions) store() bool { return o.Key != "" && o.Cert != "" }
+
 // Build makes the APK of a package (SPEC §24.1): it builds libapp.so for each ABI with the
 // NDK's clang and cgo, links the manifest and the icon with aapt2, adds classes.dex and the
 // libraries (stored, not compressed), aligns the result to 16 KB with zipalign and signs it
@@ -79,8 +85,8 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 	if err != nil {
 		return nil, err
 	}
-	if o.Release && (o.Key == "" || o.Cert == "") {
-		return nil, errors.New(TagAndroidBuildInvalid, "a release build needs -key and -cert")
+	if (o.Key == "") != (o.Cert == "") {
+		return nil, errors.New(TagAndroidBuildInvalid, "a store build needs both -key and -cert")
 	}
 	if o.AppID == "" {
 		o.AppID = DefaultAppID(o.Package)
@@ -99,7 +105,7 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 		dex = Dex
 	}
 	key, cert := o.Key, o.Cert
-	if !o.Release {
+	if !o.store() {
 		dir := o.ConfigDir
 		if dir == "" {
 			cfg, err := os.UserConfigDir()
@@ -141,8 +147,10 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 			return nil, errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("dir", filepath.Dir(so))
 		}
 		args := []string{"build", "-buildmode=c-shared", "-o", so}
-		if o.Release {
-			args = append(args, "-tags", "glutter_release", "-ldflags=-s -w")
+		if o.Debug {
+			args = append(args, "-tags", "debug_mode")
+		} else {
+			args = append(args, "-ldflags=-s -w")
 		}
 		args = append(args, o.Package)
 		env := append(os.Environ(), "GOOS=android", "GOARCH="+abi.GOARCH, "CGO_ENABLED=1", "CC="+sdk.Clang(abi.Name))
@@ -160,7 +168,7 @@ func Build(ctx context.Context, sdk *SDK, run Runner, o BuildOptions) (*BuildRes
 
 	// 2. The manifest and the icon, linked with aapt2.
 	manifest := filepath.Join(work, "AndroidManifest.xml")
-	if err := os.WriteFile(manifest, Manifest(ManifestConfig{AppID: o.AppID, Label: o.Label, Permissions: o.Permissions, Debuggable: !o.Release, HasIcon: true}), 0o644); err != nil {
+	if err := os.WriteFile(manifest, Manifest(ManifestConfig{AppID: o.AppID, Label: o.Label, Permissions: o.Permissions, Debuggable: !o.store(), HasIcon: true}), 0o644); err != nil {
 		return nil, errors.NewErr(TagAndroidWriteFailed, err).SetMetadata("path", manifest)
 	}
 	resDir := filepath.Join(work, "res", "mipmap-xxxhdpi")
@@ -327,7 +335,7 @@ func isLetter(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
 	// TagAndroidBuildInvalid is the tag of the error for options that cannot make an APK: no
-	// package, an unknown ABI, a release build without a key.
+	// package, an unknown ABI, a store build with a key and no certificate.
 	TagAndroidBuildInvalid = "AndroidBuildInvalid"
 	// TagAndroidWriteFailed is the tag of the error for a file of the build that cannot be
 	// read or written; the metadata "path" or "dir" says which.

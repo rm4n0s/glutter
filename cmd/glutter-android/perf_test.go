@@ -181,7 +181,7 @@ func (f *fakeDevice) deps(t *testing.T) (perfDeps, *bytes.Buffer) {
 }
 
 func testPerfOptions() perfOptions {
-	return perfOptions{pkg: "./examples/counter", build: androidtool.BuildOptions{Release: true}, abis: androidtool.ABIs,
+	return perfOptions{pkg: "./examples/counter", build: androidtool.BuildOptions{}, abis: androidtool.ABIs,
 		extras: map[string]string{"GLUTTER_GALLERY_PAGE": "data"}, starts: 3, settle: 4 * time.Second, seconds: 5, frames: true,
 		timeouts: perfTimeouts{firstFrame: 5 * time.Second, poll: 250 * time.Millisecond, afterStop: time.Second}}
 }
@@ -378,7 +378,7 @@ func TestPerfUsageErrors(t *testing.T) {
 		{name: "zero starts", args: []string{"perf", "-starts", "0", "./examples/counter"}, route: "run->runPerf." + tagAndroidPerfBadCount, in: "at least 1"},
 		{name: "zero seconds", args: []string{"perf", "-seconds", "0", "./examples/counter"}, route: "run->runPerf." + tagAndroidPerfBadCount},
 		{name: "an env that is not GLUTTER_", args: []string{"perf", "-env", "HOME=/x", "./examples/counter"}, route: "run->runPerf->parseEnvs." + tagAndroidUsage},
-		{name: "dev events need a debug build", args: []string{"perf", "-env", "GLUTTER_DEV_EVENTS=wait:1s", "./examples/counter"}, route: "run->runPerf." + tagAndroidPerfDevEventsRelease, in: "-release=false"},
+		{name: "dev events need a debug build", args: []string{"perf", "-env", "GLUTTER_DEV_EVENTS=wait:1s", "./examples/counter"}, route: "run->runPerf." + tagAndroidPerfDevEventsRelease, in: "add -debug"},
 		{name: "an unknown ABI", args: []string{"perf", "-abi", "armv7", "./examples/counter"}, route: "run->runPerf->parseABIs." + tagAndroidPerfBadABI, in: "armv7"},
 	}
 	for _, tt := range tests {
@@ -393,10 +393,10 @@ func TestPerfUsageErrors(t *testing.T) {
 }
 
 func TestPerfFlagDefaults(t *testing.T) {
-	// The defaults the help text promises: a release build of both ABIs, five starts.
+	// The defaults the help text promises: a release build (no -debug) of both ABIs, five starts.
 	var out bytes.Buffer
 	_ = run(context.Background(), []string{"perf", "-h"}, io.Discard, &out) // -h is an error of the flag set
-	for _, want := range []string{"-release", "(default true)", `(default "arm64,amd64")`, "-starts int", "(default 5)", "-settle duration", "(default 8s)", "-seconds int", "-format string"} {
+	for _, want := range []string{"-debug", `(default "arm64,amd64")`, "-starts int", "(default 5)", "-settle duration", "(default 8s)", "-seconds int", "-format string"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the help of perf has no %q:\n%s", want, out.String())
 		}

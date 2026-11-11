@@ -91,11 +91,11 @@ func TestParsePerf(t *testing.T) {
 		wantTag string
 	}{
 		{"defaults", []string{"./x"}, func(o perfOptions) bool {
-			return o.pkg == "./x" && o.starts == 5 && o.seconds == 10 && o.settle == 5*time.Second && o.bf.release && o.format == "text"
+			return o.pkg == "./x" && o.starts == 5 && o.seconds == 10 && o.settle == 5*time.Second && !o.bf.debug && o.format == "text"
 		}, ""},
-		{"debug with a script", []string{"-release=false", "-env", "GLUTTER_DEV_EVENTS=wait:1s", "-starts", "2", "-format", "markdown", "./x"},
+		{"debug with a script", []string{"-debug", "-env", "GLUTTER_DEV_EVENTS=wait:1s", "-starts", "2", "-format", "markdown", "./x"},
 			func(o perfOptions) bool {
-				return !o.bf.release && o.starts == 2 && o.format == "markdown" && hasEnv(o.env, "GLUTTER_DEV_EVENTS")
+				return o.bf.debug && o.starts == 2 && o.format == "markdown" && hasEnv(o.env, "GLUTTER_DEV_EVENTS")
 			}, ""},
 		{"a script in a release build", []string{"-env", "GLUTTER_DEV_EVENTS=wait:1s", "./x"}, nil, tagMacOSUsage},
 		{"a bad format", []string{"-format", "html", "./x"}, nil, tagMacOSUsage},
@@ -165,7 +165,7 @@ func TestPerfReportDocument(t *testing.T) {
 func TestParseBuildFlags(t *testing.T) {
 	var bf buildFlags
 	fs := newFlagSetForTest(&bf)
-	pkg, err := parseWith(fs, []string{"-name", "Demo", "-id", "dev.x.demo", "-universal", "-hardened", "-release", "-usage", "NSCameraUsageDescription=For pictures", "-o", "Out.app", "./x"}, io.Discard)
+	pkg, err := parseWith(fs, []string{"-name", "Demo", "-id", "dev.x.demo", "-universal", "-hardened", "-debug", "-usage", "NSCameraUsageDescription=For pictures", "-o", "Out.app", "./x"}, io.Discard)
 	if err != nil || pkg != "./x" {
 		t.Fatalf("parse: %q, %v", pkg, err)
 	}
@@ -173,7 +173,7 @@ func TestParseBuildFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.Name != "Demo" || o.ID != "dev.x.demo" || !slices.Equal(o.Archs, []string{"arm64", "amd64"}) || !o.Hardened || !o.Release || o.Out != "Out.app" ||
+	if o.Name != "Demo" || o.ID != "dev.x.demo" || !slices.Equal(o.Archs, []string{"arm64", "amd64"}) || !o.Hardened || !o.Debug || o.Out != "Out.app" ||
 		o.Usage["NSCameraUsageDescription"] != "For pictures" {
 		t.Errorf("options = %+v", o)
 	}
@@ -230,7 +230,7 @@ func TestBuildMakesABundleAndSaysWhere(t *testing.T) {
 	app := filepath.Join(t.TempDir(), "Tiny.app")
 	t.Chdir(dir)
 	var out strings.Builder
-	if err := run(t.Context(), []string{"build", "-o", app, "-name", "Tiny", "-release", "."}, &out, io.Discard); err != nil {
+	if err := run(t.Context(), []string{"build", "-o", app, "-name", "Tiny", "."}, &out, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), app) || !strings.Contains(out.String(), "Tiny 1.0.0 (dev.glutter.tiny)") {

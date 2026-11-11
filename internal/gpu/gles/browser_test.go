@@ -37,6 +37,7 @@ func glwebSite(t *testing.T) string {
 			return
 		}
 		_, glwebErr = webtool.Build(context.Background(), webtool.BuildOptions{
+			Debug:   true,
 			Package: "./internal/gpu/gles/glwebtest", Dir: webtest.ModuleRoot(t), OutDir: glwebDir,
 		})
 	})

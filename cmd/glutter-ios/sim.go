@@ -149,6 +149,9 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var settle time.Duration
 	bf.add(fs, false)
 	sf.add(fs)
+	// shot makes a debug build unless told otherwise: the hooks it drives (GLUTTER_DEV_*) are read only by debug builds.
+	bf.debug = true
+	fs.Lookup("debug").DefValue = "true"
 	fs.BoolVar(&screen, "screen", false, "take the screen of the device (simctl io screenshot) instead of the frame the app saves")
 	fs.DurationVar(&settle, "settle", 3*time.Second, "with -screen, how long to wait after the launch before the screenshot")
 	pkg, err := parseWith(fs, args, stderr)

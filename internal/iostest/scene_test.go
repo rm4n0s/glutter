@@ -30,6 +30,7 @@ func installed(t *testing.T, h *iostest.Harness, pkg string) (iostool.Device, io
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	res, err := iostool.Build(ctx, iostool.BuildOptions{
+		Debug:   true,
 		Package: pkg, Dir: root, Out: filepath.Join(t.TempDir(), "App.app"), Simulator: true, ID: "dev.glutter.scenetest",
 		Orientations: []string{iostool.OrientationPortrait, iostool.OrientationLandscapeLeft, iostool.OrientationLandscapeRight},
 	})

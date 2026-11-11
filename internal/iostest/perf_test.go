@@ -92,7 +92,7 @@ func measure(t *testing.T, h *iostest.Harness, pkg string, window time.Duration)
 	name := filepath.Base(pkg)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	res, err := iostool.Build(ctx, iostool.BuildOptions{Package: pkg, Dir: root, Out: filepath.Join(t.TempDir(), "App.app"), Simulator: true, Release: true, ID: "dev.glutter.perf"})
+	res, err := iostool.Build(ctx, iostool.BuildOptions{Package: pkg, Dir: root, Out: filepath.Join(t.TempDir(), "App.app"), Simulator: true, ID: "dev.glutter.perf"})
 	if err != nil {
 		t.Fatalf("build %s: %v", pkg, err)
 	}

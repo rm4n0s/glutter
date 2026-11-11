@@ -1,4 +1,4 @@
-//go:build !glutter_release && !glutter_profile
+//go:build debug_mode
 
 package gestures
 

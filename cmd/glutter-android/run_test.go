@@ -62,11 +62,11 @@ func TestBuildFlagsOptions(t *testing.T) {
 	fs.SetOutput(io.Discard)
 	var bf buildFlags
 	bf.add(fs, true)
-	if err := fs.Parse([]string{"-o", "x.apk", "-abi", "arm64, amd64", "-release", "-app-id", "a.b", "-label", "L", "-permission", "p.one", "-permission", "p.two", "-key", "k", "-cert", "c", "-vulkan-validation", "/vvl"}); err != nil {
+	if err := fs.Parse([]string{"-o", "x.apk", "-abi", "arm64, amd64", "-debug", "-app-id", "a.b", "-label", "L", "-permission", "p.one", "-permission", "p.two", "-key", "k", "-cert", "c", "-vulkan-validation", "/vvl"}); err != nil {
 		t.Fatal(err)
 	}
 	o := bf.options("./pkg")
-	if o.Package != "./pkg" || o.Out != "x.apk" || strings.Join(o.ABIs, "|") != "arm64|amd64" || !o.Release || o.AppID != "a.b" ||
+	if o.Package != "./pkg" || o.Out != "x.apk" || strings.Join(o.ABIs, "|") != "arm64|amd64" || !o.Debug || o.AppID != "a.b" ||
 		o.Label != "L" || strings.Join(o.Permissions, "|") != "p.one|p.two" || o.Key != "k" || o.Cert != "c" || o.ValidationLayerDir != "/vvl" {
 		t.Errorf("options %+v", o)
 	}

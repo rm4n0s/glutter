@@ -50,6 +50,7 @@ func TestEveryExampleDrawsItsFirstFrameUnderWine(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 			defer cancel()
 			res, err := wintool.Build(ctx, wintool.ExecRunner{}, wintool.BuildOptions{
+				Debug:   true,
 				Package: "./examples/" + name, Dir: h.Root, Out: filepath.Join(dir, name+".exe"),
 			})
 			if err != nil {

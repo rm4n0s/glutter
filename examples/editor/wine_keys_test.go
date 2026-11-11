@@ -28,7 +28,7 @@ func wineEditor(t *testing.T) func(name string, env ...string) *image.RGBA {
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "editor.exe")
-	build := exec.Command("go", "build", "-o", exe, "./examples/editor")
+	build := exec.Command("go", "build", "-tags", "debug_mode", "-o", exe, "./examples/editor")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {

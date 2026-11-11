@@ -44,7 +44,7 @@ func TestASteadyFrameAllocatesNothing(t *testing.T) {
 	}
 	if runtime.GOARCH == "wasm" && foundation.DebugMode {
 		// A debug build checks that each call is on the UI thread, and on wasm there is no assembly to read the goroutine's number
-		// (internal/goid), so the check walks the stack, which allocates. The release build (-tags glutter_release) allocates nothing.
+		// (internal/goid), so the check walks the stack, which allocates. The release build (no debug_mode tag) allocates nothing.
 		t.Skip("a debug build on wasm allocates in the check of the UI thread")
 	}
 	grid := func(n int) []*viewport3d.Item {

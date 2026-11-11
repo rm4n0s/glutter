@@ -37,9 +37,7 @@ func parsePerf(args []string, stderr io.Writer) (perfOptions, error) {
 	fs := flag.NewFlagSet("perf", flag.ContinueOnError)
 	var o perfOptions
 	o.bf.add(fs, false)
-	o.bf.release = true // perf measures release builds unless told otherwise
-	fs.Lookup("release").DefValue = "true"
-	fs.Var(&o.env, "env", "an environment variable for the app, GLUTTER_X=v (repeatable); GLUTTER_DEV_EVENTS=script drives the frame window and needs -release=false")
+	fs.Var(&o.env, "env", "an environment variable for the app, GLUTTER_X=v (repeatable); GLUTTER_DEV_EVENTS=script drives the frame window and needs -debug")
 	fs.StringVar(&o.renderer, "renderer", "", "the renderer: auto, metal or soft (GLUTTER_RENDERER); empty leaves the choice to the app")
 	fs.IntVar(&o.starts, "starts", 5, "how many times the app is started to time the start, the first with an empty shader cache")
 	fs.IntVar(&o.seconds, "seconds", 10, "the length of the idle and frame window, in seconds")
@@ -58,8 +56,8 @@ func parsePerf(args []string, stderr io.Writer) (perfOptions, error) {
 	if o.starts < 1 || o.seconds < 1 || o.settle < 0 {
 		return o, errors.New(tagMacOSUsage, "-starts and -seconds are at least 1, and -settle is not negative", "starts", o.starts, "seconds", o.seconds)
 	}
-	if o.bf.release && hasEnv(o.env, "GLUTTER_DEV_EVENTS") {
-		return o, errors.New(tagMacOSUsage, "GLUTTER_DEV_EVENTS is read only by debug builds: add -release=false (its frame times are those of a debug build)")
+	if !o.bf.debug && hasEnv(o.env, "GLUTTER_DEV_EVENTS") {
+		return o, errors.New(tagMacOSUsage, "GLUTTER_DEV_EVENTS is read only by debug builds: add -debug (its frame times are those of a debug build)")
 	}
 	return o, nil
 }
@@ -119,7 +117,7 @@ type startResult struct {
 
 // runPerf is `glutter-macos perf` (SPEC §15 "macOS", step 33.15): it builds the package as a release bundle and prints a report with
 // the size of the executable (and of the slices with -universal), the start with an empty and with a warm shader cache, the idle CPU
-// and the memory of the process, and the frame times of a window (with -env GLUTTER_DEV_EVENTS=script and -release=false, of a
+// and the memory of the process, and the frame times of a window (with -env GLUTTER_DEV_EVENTS=script and -debug, of a
 // scenario). The numbers are the machine's: they are for noticing regressions, not a guarantee.
 func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	o, err := parsePerf(args, stderr)
@@ -139,7 +137,7 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if err := os.MkdirAll(cache, 0o755); err != nil {
 		return errors.NewErr(tagMacOSPerfFailed, err)
 	}
-	r := perfReport{Package: o.pkg, Release: o.bf.release, Env: o.env, Archs: res.Archs, Size: res.Size, Thin: res.Thin, Machine: machine(ctx)}
+	r := perfReport{Package: o.pkg, Release: !o.bf.debug, Env: o.env, Archs: res.Archs, Size: res.Size, Thin: res.Thin, Machine: machine(ctx)}
 	for i := 0; i < o.starts; i++ {
 		s, err := oneStart(ctx, res.Layout.Executable, o, dir, cache)
 		if err != nil {

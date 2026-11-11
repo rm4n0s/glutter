@@ -51,6 +51,9 @@ func parseShot(args []string, stderr io.Writer) (shotOptions, error) {
 	fs.StringVar(&o.out, "o", "", "the PNG file to write (required)")
 	fs.BoolVar(&o.bundle, "bundle", false, "run the app from its signed bundle, as `run` does, and not as a bare program")
 	o.bf.add(fs, false)
+	// shot makes a debug build unless told otherwise: the hooks it drives (GLUTTER_DEV_*) are read only by debug builds.
+	o.bf.debug = true
+	fs.Lookup("debug").DefValue = "true"
 	if err := fs.Parse(args); err != nil {
 		return o, errors.NewErr(tagMacOSUsage, err)
 	}
@@ -101,7 +104,13 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 		exe = res.Layout.Executable
 	} else {
 		var buildOut bytes.Buffer
-		build := exec.CommandContext(ctx, "go", "build", "-o", exe, o.pkg)
+		args := []string{"build", "-o", exe}
+		if o.bf.debug {
+			args = append(args, "-tags", "debug_mode")
+		} else {
+			args = append(args, "-ldflags=-s -w")
+		}
+		build := exec.CommandContext(ctx, "go", append(args, o.pkg)...)
 		build.Env = append(os.Environ(), "CGO_ENABLED=0")
 		build.Stdout, build.Stderr = &buildOut, &buildOut
 		if err := build.Run(); err != nil {

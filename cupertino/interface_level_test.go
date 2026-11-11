@@ -58,6 +58,7 @@ func TestCupertinoUserInterfaceLevelOfFindsTheLevelAndNotifies(t *testing.T) {
 }
 
 func TestCupertinoUserInterfaceLevelDiagnostics(t *testing.T) {
+	skipUnlessDebug(t) // diagnostics are empty in a release build
 	b := foundation.NewDiagnosticPropertiesBuilder()
 	cupertino.NewCupertinoUserInterfaceLevel(cupertino.CupertinoUserInterfaceLevelElevated, cupertino.NewSizedBox(nil)).DebugFillProperties(b)
 	if len(b.Properties) != 1 {

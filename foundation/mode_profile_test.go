@@ -1,4 +1,4 @@
-//go:build glutter_profile && !glutter_release
+//go:build glutter_profile && !debug_mode
 
 package foundation
 

@@ -29,7 +29,7 @@ func TestWineWheelScrollsTheView(t *testing.T) {
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "scrolling.exe")
-	build := exec.Command("go", "build", "-o", exe, "./examples/scrolling")
+	build := exec.Command("go", "build", "-tags", "debug_mode", "-o", exe, "./examples/scrolling")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {

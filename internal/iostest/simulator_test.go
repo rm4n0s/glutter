@@ -37,7 +37,7 @@ func TestHelloAppStartsInTheSimulator(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	res, err := iostool.Build(ctx, iostool.BuildOptions{Package: "./internal/iostest/hello", Dir: root, Out: filepath.Join(t.TempDir(), "Hello.app"), Simulator: true, ID: "dev.glutter.hello"})
+	res, err := iostool.Build(ctx, iostool.BuildOptions{Debug: true, Package: "./internal/iostest/hello", Dir: root, Out: filepath.Join(t.TempDir(), "Hello.app"), Simulator: true, ID: "dev.glutter.hello"})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestMainOnAnotherThreadFails(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	res, err := iostool.Build(ctx, iostool.BuildOptions{Package: "./internal/iostest/hello", Dir: root, Out: filepath.Join(t.TempDir(), "Hello.app"), Simulator: true, ID: "dev.glutter.hello"})
+	res, err := iostool.Build(ctx, iostool.BuildOptions{Debug: true, Package: "./internal/iostest/hello", Dir: root, Out: filepath.Join(t.TempDir(), "Hello.app"), Simulator: true, ID: "dev.glutter.hello"})
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

@@ -22,8 +22,9 @@ type BuildOptions struct {
 	Package string
 	// OutDir is the directory to write the build to; it is created.
 	OutDir string
-	// Release builds with -tags glutter_release and -ldflags=-s -w (SPEC §23.1).
-	Release bool
+	// Debug builds with -tags debug_mode (foundation.DebugMode) and does not strip the
+	// program; without it the build is a release, stripped with -ldflags=-s -w (SPEC §23.1).
+	Debug bool
 	// Dir is the directory to run the go command in, which Package is relative to. The
 	// default is the current directory.
 	Dir string
@@ -67,8 +68,10 @@ func Build(ctx context.Context, o BuildOptions) (*BuildResult, error) {
 	env = append(env, o.Env...)
 	wasm := filepath.Join(o.OutDir, "app.wasm")
 	args := []string{"build", "-o", wasm}
-	if o.Release {
-		args = append(args, "-tags", "glutter_release", "-ldflags=-s -w")
+	if o.Debug {
+		args = append(args, "-tags", "debug_mode")
+	} else {
+		args = append(args, "-ldflags=-s -w")
 	}
 	args = append(args, o.Package)
 	if _, err := runGo(ctx, o.Dir, env, args...); err != nil {

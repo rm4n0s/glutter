@@ -26,11 +26,8 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	var bf buildFlags
 	var envs listFlag
 	bf.add(fs, false)
-	// perf measures release builds unless told otherwise.
-	bf.release = true
-	fs.Lookup("release").DefValue = "true"
 	arch := fs.String("arch", "amd64,arm64", "the architectures to build and size, comma separated; amd64 is the one that runs under Wine")
-	fs.Var(&envs, "env", "an environment variable for the app, GLUTTER_X=v (repeatable); GLUTTER_DEV_EVENTS=script drives the frame scenario and needs -release=false")
+	fs.Var(&envs, "env", "an environment variable for the app, GLUTTER_X=v (repeatable); GLUTTER_DEV_EVENTS=script drives the frame scenario and needs -debug")
 	renderer := fs.String("renderer", "d3d12", "the renderer: auto, d3d12 or soft (GLUTTER_RENDERER)")
 	starts := fs.Int("starts", 5, "how many times the app is started to time the cold start, with an empty and with a warm shader cache")
 	settle := fs.Duration("settle", 8*time.Second, "how long the app runs after its start before the idle window")
@@ -55,8 +52,8 @@ func runPerf(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if *renderer != "" {
 		extras = append(extras, "GLUTTER_RENDERER="+*renderer)
 	}
-	if hasEnv(extras, devEventsKey) && bf.release {
-		return errors.New(tagWindowsPerfDevEventsRelease, "GLUTTER_DEV_EVENTS is read only by debug builds: add -release=false (its frame times are those of a debug build)")
+	if hasEnv(extras, devEventsKey) && !bf.debug {
+		return errors.New(tagWindowsPerfDevEventsRelease, "GLUTTER_DEV_EVENTS is read only by debug builds: add -debug (its frame times are those of a debug build)")
 	}
 	archs := splitList(*arch)
 	if !contains(archs, "amd64") {

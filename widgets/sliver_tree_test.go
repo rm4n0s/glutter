@@ -261,6 +261,7 @@ func TestTreeSliverControllerFailures(t *testing.T) {
 		t.Error("no panic")
 	})
 	t.Run("a controller of another tree", func(t *testing.T) {
+		skipUnlessDebug(t) // an assert of Flutter
 		ts := newTreeTester(t)
 		controller := NewTreeSliverController[string]()
 		ts.PumpWidget(treeApp(NewTreeSliver(simpleNodeSet(), TreeSliverOpts[string]{Controller: controller}),
@@ -274,6 +275,7 @@ func TestTreeSliverControllerFailures(t *testing.T) {
 		}
 	})
 	t.Run("a node that is not active", func(t *testing.T) {
+		skipUnlessDebug(t) // an assert of Flutter
 		ts := newTreeTester(t)
 		controller := NewTreeSliverController[string]()
 		nodes := simpleNodeSet()
@@ -322,6 +324,9 @@ func TestTreeSliverIndentationTypeValues(t *testing.T) {
 		if got := tt.got.Value(); got != tt.want {
 			t.Errorf("%s = %v, want %v", tt.name, got, tt.want)
 		}
+	}
+	if !foundation.DebugMode {
+		return // the check of a negative indentation is an assert of Flutter
 	}
 	defer func() {
 		appErr, ok := errors.FromError(asError(recover()))
@@ -684,6 +689,7 @@ func TestTreeSliverIndentationAndRowExtents(t *testing.T) {
 }
 
 func TestTreeSliverOnTheWrongAxisDirection(t *testing.T) {
+	skipUnlessDebug(t) // an assert of Flutter
 	ts := newTreeTester(t)
 	ts.PumpWidget(ltr(NewCustomScrollView([]Widget{NewTreeSliver(simpleNodeSet())}, CustomScrollViewOpts{Reverse: true})))
 	err := ts.TakeError()

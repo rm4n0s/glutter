@@ -26,8 +26,9 @@ type BuildOptions struct {
 	Out string
 	// Archs are the architectures to build, by name ("amd64", "arm64"); amd64 when empty.
 	Archs []string
-	// Release builds with -tags glutter_release and -ldflags=-s -w.
-	Release bool
+	// Debug builds with -tags debug_mode (foundation.DebugMode) and does not strip the program;
+	// without it the build is a release, stripped with -ldflags=-s -w.
+	Debug bool
 	// Console builds a console program (no -H=windowsgui): it opens a console window when started
 	// from Explorer, and prints to the terminal it is started from.
 	Console bool
@@ -151,8 +152,8 @@ func Build(ctx context.Context, run Runner, o BuildOptions) (*BuildResult, error
 			return nil, err
 		}
 		args := []string{"build", "-o", exe}
-		if o.Release {
-			args = append(args, "-tags", "glutter_release")
+		if o.Debug {
+			args = append(args, "-tags", "debug_mode")
 		}
 		if ld := ldflags(o); ld != "" {
 			args = append(args, "-ldflags="+ld)
@@ -193,8 +194,8 @@ func listPackage(ctx context.Context, run Runner, o BuildOptions, arch Arch) (*l
 	env := append(os.Environ(), "GOOS=windows", "GOARCH="+arch.GOARCH, "CGO_ENABLED=0")
 	env = append(env, o.Env...)
 	args := []string{"list", "-json"}
-	if o.Release {
-		args = append(args, "-tags", "glutter_release")
+	if o.Debug {
+		args = append(args, "-tags", "debug_mode")
 	}
 	listed, err := run.Run(ctx, Command{Dir: o.Dir, Env: env, Name: "go", Args: append(args, o.Package)})
 	if err != nil {
@@ -271,13 +272,13 @@ func hasArch(list []Arch, name string) bool {
 	return false
 }
 
-// ldflags are the linker flags: -H=windowsgui for a GUI program, -s -w for a release.
+// ldflags are the linker flags: -H=windowsgui for a GUI program, -s -w for a release (not Debug).
 func ldflags(o BuildOptions) string {
 	var flags []string
 	if !o.Console {
 		flags = append(flags, "-H=windowsgui")
 	}
-	if o.Release {
+	if !o.Debug {
 		flags = append(flags, "-s", "-w")
 	}
 	return strings.Join(flags, " ")

@@ -30,7 +30,7 @@ func TestWineTwoWindowsAndADialogShareOneDirect3D12Device(t *testing.T) {
 	}
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "multiwindow.exe")
-	build := exec.Command("go", "build", "-o", exe, ".")
+	build := exec.Command("go", "build", "-tags", "debug_mode", "-o", exe, ".")
 	build.Dir = filepath.Join(h.Root, "examples", "multiwindow")
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {

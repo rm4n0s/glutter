@@ -104,7 +104,7 @@ func startChild(t *testing.T, role string, env ...string) *child {
 		t.Fatal(err)
 	}
 	exe := filepath.Join(t.TempDir(), "wasapi.test.exe")
-	build := exec.Command("go", "test", "-c", "-tags", "glutter_wine glutter_audio", "-o", exe, "./internal/platform/windows/wasapi")
+	build := exec.Command("go", "test", "-c", "-tags", "glutter_wine glutter_audio debug_mode", "-o", exe, "./internal/platform/windows/wasapi")
 	build.Dir = h.Root
 	build.Env = append(os.Environ(), "GOOS=windows", "GOARCH=amd64", "CGO_ENABLED=0")
 	if out, err := build.CombinedOutput(); err != nil {
