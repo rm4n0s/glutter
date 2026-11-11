@@ -129,11 +129,13 @@ func TestClosingAHiddenWindowEndsRun(t *testing.T) {
 		t.Fatalf("Run returned %v, want nil", err)
 	}
 	e.stopped = true
+	// The fake compositor reads the requests on a goroutine of its own, so it may not have read them
+	// all when Run returns. The surface is destroyed last: once the compositor has that, it has the rest.
+	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_surface.destroy")) == 1 }, "the surface was never destroyed")
 	// The role was gone already: it is not destroyed twice.
 	if n := len(e.srv.RequestsWith("xdg_toplevel.destroy")); n != 1 {
 		t.Errorf("xdg_toplevel.destroy sent %d times, want once", n)
 	}
-	waitUntil(t, func() bool { return len(e.srv.RequestsWith("wl_surface.destroy")) == 1 }, "the surface was never destroyed")
 }
 
 func TestAHiddenWindowIgnoresTheRequestsThatNeedAToplevel(t *testing.T) {
