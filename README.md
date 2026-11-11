@@ -200,6 +200,10 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 }
 ```
 
+**What is new in 1.17.** Release builds by default, and the Linux run of 1.13 to 1.16.
+- **A plain `go build`, `go run` or `go install` is a release build** (`foundation.ReleaseMode`): no asserts, no diagnostics, no `GLUTTER_DEV_*` hooks. `-tags debug_mode` makes a debug build, and the tag `glutter_release` is gone (a build that still passes it is a release build, as before). The tools build release builds unless given `-debug`, which replaces `-release`; their `shot` builds a debug build. `glutter-android` signs a store APK, not debuggable, when given `-key` and `-cert`, and otherwise the debug key, debuggable, as before.
+- **Fixed on Linux**, found by running there what was built on a Mac: a HID pad (PlayStation, Switch Pro, a Bluetooth Xbox pad) that was asked to rumble at once after it was added was not found; a pad unplugged during the first look at `/dev/input`, when inotify is not there, was kept; and `glutter-windows shot -screen` captured the screen before Wine had drawn the window.
+
 **What is new in 1.16.** macOS, used for real.
 - **An app that draws its own title bar keeps the Mac's window buttons** (1.16.2). With `DecorationsApp` and `WindowDecoration`, macOS shows its red, yellow and green buttons at the left of your bar, centered in its height, and `WindowDecoration` draws no buttons, border or resize strips of its own there: the bar starts after them, so nothing of yours is under them. `ui.WindowInfo.SystemButtons` is the area they take (empty on the other platforms and where the system draws the title bar), for a bar you draw yourself.
 - **A Mac that is used from another computer** (1.16.3). The view's `CADisplayLink` gives no tick to a window on a display that is asleep, which is how a Mac looks through Screen Sharing with its own monitor off: an app drew its first frame and then nothing, and no click did anything. The link is watched now, and a `CVDisplayLink` takes over while it is silent. A mouse that leaves the window and comes back is added again before its next event, as Flutter's embedder does.

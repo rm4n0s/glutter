@@ -1123,7 +1123,7 @@ Record the answers here when they are known.
 
 What only a person (or the Linux machine) can do; the results of the Mac and the Simulator are in `docs/IMPLEMENTED.md`.
 
-1. **Rule 8 on the Linux machine**: the Linux, Wine and Android suites of `docs/IMPLEMENTATION.md` rule 8, which a Mac cannot run. A failure is a bug of the step that caused it, fixed before the tags `v1.13.0`, `v1.14.0` and `v1.15.0` are made and the milestones are published (`git push --follow-tags origin main`).
+1. **Done (step 36.2, 2026-11-11).** **Rule 8 on the Linux machine**: the Linux, Wine and Android suites of `docs/IMPLEMENTATION.md` rule 8, which a Mac cannot run. A failure is a bug of the step that caused it, fixed before the tags `v1.13.0`, `v1.14.0` and `v1.15.0` are made and the milestones are published (`git push --follow-tags origin main`). (The tags were made on 2026-11-10, before the run; its fixes are in 1.17.0. The 36.2 entry of `docs/IMPLEMENTED.md` has the results.)
 2. **The release tags**, after item 1: `git tag -a v1.13.0 -m "Glutter 1.13: macOS" <the commit of step-33.16>`, `git tag -a v1.14.0 -m "Glutter 1.14: Cupertino" <the commit of step-34.10>` and `git tag -a v1.15.0 -m "Glutter 1.15: iOS" <the commit of step-35.9>`.
 3. **Build for a device and run.** With your team and a development profile that has the phone: `go run ./cmd/glutter-ios build -team <ID> -profile <file> -id <your id> -o Gallery.app ./examples/gallery`, then `xcrun devicectl device install app --device <UDID> Gallery.app` and start it. Say which iPhone, which iPad and which iOS the answers come from.
 4. **Every example on a phone**: `animations`, `cad`, `counter`, `cupertino`, `custompaint`, `editor`, `gallery`, `game3d`, `gpu-triangle`, `layout`, `navigation`, `scrolling`, `svg` and `todo` start, draw and respond to touch (`multiwindow` and `tray` are not on iOS).
@@ -1145,7 +1145,9 @@ What only a real pad (and the Linux machine) can show. The unit tests of the Lin
 5. **Rumble of an Xbox 360 or other evdev pad without a driver**: the first rumble works (the device is opened for writing then), and a pad whose node the user may not write to says `CanRumble() == false`.
 6. **On Windows**, with a PlayStation pad: the same as 2 and 3 (the Xbox pads through XInput are unchanged).
 
-Answers: _(not yet recorded)_
+Answers (step 36.2, 2026-11-11, the Linux machine: Fedora 45, no gamepad of its own):
+- Item 1, `strace` of a built `examples/counter` (the binary traced, not `go run`) for 12 s on a headless Wayland compositor, before (`eaa5682`) and after (`main`). This machine has one input device that the service takes for a pad, `/dev/input/event4`, which the user may not read, and no pad that a HID driver serves, so the difference the item describes cannot show here. Before, by default and with `GLUTTER_GAMEPADS=off` (which `eaa5682` does not know): `/dev/input/event4` opened `O_RDONLY|O_NONBLOCK` six times, each `EACCES`, and the log says that a pad is there that may not be read; no hidraw node. After, by default: the same. After, with `GLUTTER_GAMEPADS=off`: nothing under `/dev/input`, `/dev/hidraw*` or `/sys/class/input` is opened or watched. `inotify_init1` failed with `EMFILE` during the run (the browser suite had used the user's inotify instances), so both builds polled `/dev/input` every 2 s instead of watching it.
+- Items 2 to 6 need a real pad: _(not yet recorded)_
 
 ## 37.2 Reduce Transparency, Differentiate Without Color and On/Off Labels
 
