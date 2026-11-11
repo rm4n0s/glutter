@@ -1160,20 +1160,28 @@ func (s *popupMenuButtonState[T]) showButtonMenu() {
 		Constraints: w.o.Constraints, ClipBehavior: w.o.ClipBehavior, UseRootNavigator: w.o.UseRootNavigator,
 		PopUpAnimationStyle: w.o.PopUpAnimationStyle, RouteSettings: w.o.RouteSettings, RequestFocus: w.o.RequestFocus,
 	})
+	binding := widgets.WidgetsBindingOf(s.Context())
 	route.PoppedThen(func(result any) {
-		if !s.Mounted() {
-			return
-		}
-		s.SetState(func() { s.isMenuExpanded = false })
-		if result == nil {
-			if f := w.o.OnCanceled; f != nil {
-				f()
+		// Flutter runs the callback of showMenu's future as a microtask, after the code that completed
+		// it: the navigator has finished the pop and is not locked any more, so OnSelected and
+		// OnCanceled may push a route (a dialog that asks about the chosen action) or pop one
+		// (SPEC §12.10). PoppedThen calls back while the history is changing.
+		binding.Post(func() {
+			if !s.Mounted() {
+				return
 			}
-			return
-		}
-		if v, ok := result.(T); ok && w.o.OnSelected != nil {
-			w.o.OnSelected(v)
-		}
+			s.SetState(func() { s.isMenuExpanded = false })
+			w := s.Widget()
+			if result == nil {
+				if f := w.o.OnCanceled; f != nil {
+					f()
+				}
+				return
+			}
+			if v, ok := result.(T); ok && w.o.OnSelected != nil {
+				w.o.OnSelected(v)
+			}
+		})
 	})
 }
 

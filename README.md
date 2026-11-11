@@ -207,6 +207,7 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 - **Three more accessibility switches** (1.16.0): Reduce Transparency, Differentiate Without Color and On/Off Labels of macOS and iOS reach the framework (`MediaQueryReduceTransparencyOf`, `MediaQueryDifferentiateWithoutColorOf`, `MediaQueryOnOffSwitchLabelsOf`), and the Cupertino bars and popups become opaque, without their blur, under Reduce Transparency.
 - **A generic pad rumbles on macOS** (1.16.0) through the Force Feedback framework, as SDL's does. No such pad was connected to the Mac this was written on, so it is tested against a fake of the framework only.
 - **Fixed** (1.16.1): a `Post` from a goroutine that outlives the app crashed a macOS app at exit; it is dropped now, as on Linux.
+- **Fixed** (1.16.4): `PopupMenuButton` calls `OnSelected` and `OnCanceled` after the menu's route has been popped, so they can open a dialog or push a page (it reported `NavigatorLocked` before); and text whose font family nothing has (`monospace` in a widget test, a name that is not installed) is drawn with the bundled Roboto and no longer laid out empty.
 
 **What is new in 1.14.** The Cupertino look.
 - **Package `cupertino`**: Flutter's `cupertino` library, file by file, drawn the same on every platform: `CupertinoApp`, the page route with the parallax slide and the back swipe, sheets, popups and dialogs, the tab scaffold, the navigation bars with the large title that collapses and flies between routes, the controls, the text and search fields and form rows, list sections and tiles, the expansion tile, the pull to refresh, alert dialogs, action sheets, context menus and menu anchors, the pickers, the scrollbar, text selection with its handles, toolbars and magnifier, `CupertinoColors` and `CupertinoDynamicColor`, and `CupertinoIcons`. San Francisco is used on macOS (and iOS) through Core Text and is never bundled; elsewhere the default font draws.
@@ -362,7 +363,13 @@ configuration; `globalThis.glutterConfig.hostElement` (a CSS selector, set in `i
 view in an element instead of the whole page.
 
 **Browsers.** Tried: Chromium 155 (WebGPU, WebGL 2) and Firefox 158 (WebGL 2; its WebGPU is off by
-default on Linux), both on Fedora 44. Safari and other engines were not tried.
+default on Linux), both on Fedora 44, with the browser tests of the repository. Safari 27.2 on macOS 27 (Apple
+silicon) was tried by hand on 2026-11-11, not with the test suite: the counter, gallery, cupertino, scrolling,
+editor and svg examples draw their first frame with WebGPU (what the page picks there) and with WebGL 2, the
+counter also with the software renderer, and real clicks on the counter's button count with all three. Not
+tried in Safari: the keyboard and input methods, the clipboard, scrolling, audio and gamepads, and what the
+WebGL 2 fallback looks like on the screen (its frame was read back, not looked at). A page in a background
+tab draws nothing until it is shown, as in every browser. Other engines were not tried.
 
 **Renderers.** The page tries WebGPU, then WebGL 2, then a software renderer on a 2D canvas, once, at the
 first frame. `?GLUTTER_RENDERER=webgpu|webgl|soft` in the page's address (or `RunAppOpts.Renderer`)
