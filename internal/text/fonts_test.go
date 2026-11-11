@@ -447,3 +447,45 @@ func TestFallback(t *testing.T) {
 const (
 	tagMatcherBroke = "MatcherBroke"
 )
+
+// LastResort is the first font registered with AddBundled, whatever is registered after it, and nothing
+// for a collection without bundled fonts; Match still gives no font for a family that nothing has.
+func TestLastResortIsTheFirstBundledFont(t *testing.T) {
+	tests := []struct {
+		name     string
+		families []string // registered in this order, each with Roboto's data
+		want     string
+	}{
+		{"no bundled font", nil, ""},
+		{"one", []string{"Roboto"}, "Roboto"},
+		{"the first of several", []string{"Roboto", "MaterialIcons", "Another"}, "Roboto"},
+		{"registered again later", []string{"Body", "Roboto", "Body"}, "Body"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewCollection(CollectionOpts{Matcher: &fakeMatcher{}})
+			for _, family := range tt.families {
+				if err := c.AddBundled(family, fonts.Roboto()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			file, ok := c.LastResort()
+			if ok != (tt.want != "") || file.Family != tt.want {
+				t.Fatalf("LastResort = %+v, %v; want the family %q", file, ok, tt.want)
+			}
+			if !ok {
+				return
+			}
+			if !file.IsBundled() {
+				t.Errorf("the last resort is not a bundled font: %+v", file)
+			}
+			if _, err := c.Face(context.Background(), file); err != nil {
+				t.Errorf("Face: %v", err)
+			}
+			files, err := c.Match(context.Background(), "No Such Font", 400, false, "")
+			if err != nil || len(files) != 0 {
+				t.Errorf("Match of a family that nothing has = %+v, %v", files, err)
+			}
+		})
+	}
+}

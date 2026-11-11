@@ -171,3 +171,49 @@ func TestTestEngineAnswersFontQueries(t *testing.T) {
 		t.Errorf("InstalledFontFamilies = %v, want the loaded and the bundled families", got)
 	}
 }
+
+// A text whose family the test has no font for (monospace, which a desktop resolves through its system
+// fonts; a name that is not installed; no family at all) is drawn with the bundled Roboto, as Flutter
+// falls back to its default font: it was laid out with no glyph, invisible in widget tests and goldens.
+func TestTextOfAFamilyTheTestDoesNotHaveIsDrawnWithRoboto(t *testing.T) {
+	const size = 20.0
+	text := func(o painting.TextStyleOpts) widgets.Widget {
+		o.FontSize = foundation.Some(size)
+		o.Color = foundation.Some(ui.NewColor(0xFFFFFFFF))
+		return widgets.NewText("Hello", widgets.TextOpts{Style: painting.NewTextStyle(o)})
+	}
+	ts := New(t, Opts{Size: ui.Size{Width: 300, Height: 100}, Fonts: []Font{{Family: "Go Mono", Data: gomono.TTF}}})
+	roboto := widthOfText(ts, text(painting.TextStyleOpts{FontFamily: "Roboto"}))
+	mono := 5 * monoAdvance * size
+	if roboto == 0 || math.Abs(roboto-mono) < 1 {
+		t.Fatalf("Roboto is %v wide and Go Mono %v: the test needs them to differ", roboto, mono)
+	}
+	tests := []struct {
+		name  string
+		style painting.TextStyleOpts
+		want  float64
+	}{
+		{"monospace", painting.TextStyleOpts{FontFamily: "monospace"}, roboto},
+		{"a name that is not installed", painting.TextStyleOpts{FontFamily: "No Such Font"}, roboto},
+		{"no family", painting.TextStyleOpts{}, roboto},
+		{"a fallback the test has", painting.TextStyleOpts{FontFamily: "monospace", FontFamilyFallback: []string{"Go Mono"}}, mono},
+		{"a family the test has", painting.TextStyleOpts{FontFamily: "Go Mono"}, mono},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := widthOfText(ts, text(tt.style)); math.Abs(got-tt.want) > 0.51 {
+				t.Errorf("width = %v, want %v", got, tt.want)
+			}
+			lit := 0
+			img := ts.Screenshot()
+			for i := 0; i < len(img.Pix); i += 4 {
+				if img.Pix[i] > 128 {
+					lit++
+				}
+			}
+			if lit == 0 {
+				t.Error("nothing was drawn")
+			}
+		})
+	}
+}

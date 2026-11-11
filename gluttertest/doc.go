@@ -17,6 +17,9 @@
 // The text of a test is laid out with the fonts bundled with Glutter (Roboto and
 // Material Icons) and no system fonts, so that it is the same on every machine.
 // Opts.Fonts adds more, for example a monospace font for the golden of a code view.
+// A text whose family the test has no font for (monospace, a name that is not
+// installed, no family at all) is drawn with Roboto, as Flutter draws it with its
+// default font.
 //
 // An error that the framework reports (a panic in Build, layout or a callback,
 // SPEC §14.2) does not stop the test where it happens; it is kept, and the test

@@ -93,17 +93,57 @@ func TestLoadFontFromListErrors(t *testing.T) {
 }
 
 // TestLoadedSansSerifIsTheDefaultFont: a font loaded under the generic name sans-serif is the font of a
-// style that names no family, which an engine without system fonts otherwise has none for.
+// style that names no family, which an engine without system fonts otherwise draws with the bundled font
+// (its last resort, TestAFamilyThatNothingHasIsDrawnWithTheBundledFont).
 func TestLoadedSansSerifIsTheDefaultFont(t *testing.T) {
 	e := bundledEngine(t)
 	style := ui.NewTextStyle(ui.TextStyleOpts{FontSize: ui.Ptr(20.0)})
-	if got := widthIn(e, "iiii", style); got != 0 {
-		t.Fatalf("width before = %v: the bundled-only engine has a default font", got)
+	roboto := ui.NewTextStyle(ui.TextStyleOpts{FontFamily: "Roboto", FontSize: ui.Ptr(20.0)})
+	if got, want := widthIn(e, "iiii", style), widthIn(e, "iiii", roboto); got != want || got == 0 {
+		t.Fatalf("width before = %v, want that of the bundled Roboto, %v", got, want)
 	}
 	if err := e.LoadFontFromList(gomono.TTF, "sans-serif"); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := widthIn(e, "iiiW", style), 4*monoAdvance*20; math.Abs(got-want) > 0.01 {
 		t.Errorf("width after = %v, want %v", got, want)
+	}
+}
+
+// TestAFamilyThatNothingHasIsDrawnWithTheBundledFont: a style whose families no loaded, bundled or system
+// font has (a name that is not installed, a generic name on a machine without system fonts, as in
+// gluttertest) is laid out with the first bundled font, as Flutter falls back to its default font, and not
+// with no glyph at all. A family that has a font keeps it, and a character that the family lacks and the
+// bundled font has is drawn with the bundled one.
+func TestAFamilyThatNothingHasIsDrawnWithTheBundledFont(t *testing.T) {
+	e := bundledEngine(t)
+	if err := e.LoadFontFromList(gomono.TTF, "Go Mono"); err != nil {
+		t.Fatal(err)
+	}
+	size := ui.Ptr(20.0)
+	roboto := widthIn(e, "Hello", ui.NewTextStyle(ui.TextStyleOpts{FontFamily: "Roboto", FontSize: size}))
+	mono := 5 * monoAdvance * 20
+	if roboto == 0 || math.Abs(roboto-mono) < 1 {
+		t.Fatalf("Roboto lays Hello out %v wide and Go Mono %v: the test needs them to differ", roboto, mono)
+	}
+	tests := []struct {
+		name  string
+		style ui.TextStyleOpts
+		want  float64
+	}{
+		{"no family", ui.TextStyleOpts{}, roboto},
+		{"a generic family with no system font", ui.TextStyleOpts{FontFamily: "monospace"}, roboto},
+		{"a family that is not installed", ui.TextStyleOpts{FontFamily: "No Such Font"}, roboto},
+		{"nor are its fallbacks", ui.TextStyleOpts{FontFamily: "No Such Font", FontFamilyFallback: []string{"Neither This", "serif"}}, roboto},
+		{"a fallback that is loaded wins", ui.TextStyleOpts{FontFamily: "No Such Font", FontFamilyFallback: []string{"Go Mono"}}, mono},
+		{"a family that is loaded keeps its font", ui.TextStyleOpts{FontFamily: "Go Mono"}, mono},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.style.FontSize = size
+			if got := widthIn(e, "Hello", ui.NewTextStyle(tt.style)); math.Abs(got-tt.want) > 0.01 {
+				t.Errorf("width = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

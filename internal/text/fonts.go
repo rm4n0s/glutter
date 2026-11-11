@@ -167,6 +167,8 @@ type Collection struct {
 	bundled map[string][]byte // normalized family → font data
 	// bundledNames are the names of bundled fonts as they were given, by normalized family.
 	bundledNames map[string]string
+	// lastResort is the family of the first AddBundled, as it was given (LastResort); empty before any.
+	lastResort string
 	// loaded are the fonts of AddFont, by normalized family, in the order they were added.
 	loaded     map[string][]*loadedFont
 	loadedByID map[string]*loadedFont // FontFile.Path → font
@@ -229,6 +231,9 @@ func (c *Collection) AddBundled(family string, data []byte) error {
 	defer c.mu.Unlock()
 	c.bundled[normalizeFamily(family)] = data
 	c.bundledNames[normalizeFamily(family)] = family
+	if c.lastResort == "" {
+		c.lastResort = family
+	}
 	for k := range c.cmaps { // the cmap of the font that this one replaces
 		if strings.HasPrefix(k.path, BundledPrefix) && normalizeFamily(strings.TrimPrefix(k.path, BundledPrefix)) == normalizeFamily(family) {
 			delete(c.cmaps, k)
@@ -236,6 +241,22 @@ func (c *Collection) AddBundled(family string, data []byte) error {
 	}
 	c.generation++
 	return nil
+}
+
+// LastResort returns the font that draws text when neither the families of a style nor the system give
+// one: the first font registered with AddBundled (Roboto, in an app and in gluttertest), or false when the
+// program bundles none. Match does not list it for another family: a family that nothing has still
+// gives no font of its own, and only the layout falls back to this one, as Flutter's engine falls back to
+// the default font of its font manager.
+//
+// Flutter: engine/src/flutter/third_party/txt/src/txt/font_collection.cc FontCollection::GetMinikinFontCollectionForFamilies (the default font manager's fallback)
+func (c *Collection) LastResort() (FontFile, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.lastResort == "" {
+		return FontFile{}, false
+	}
+	return FontFile{Path: BundledPrefix + c.lastResort, Family: c.lastResort}, true
 }
 
 // loadedFont is a font added with AddFont and what Match needs to rank it.

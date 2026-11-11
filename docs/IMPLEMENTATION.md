@@ -4782,3 +4782,23 @@ The owner asked on 2026-11-10 to finish macOS and iOS support without stopping. 
 **Tests:** `TestLinkWatch...` (the table of the state machine); a display test that asks for frames with the default link and gets them whether the screen is awake or asleep.
 **Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md`, 40.2.
 
+## M41: Fixes found by Fishball (1.16.4)
+
+The owner passed on two entries of Fishball's list of Glutter issues on 2026-11-11 and asked to check them and fix those that exist. Both do.
+
+### 41.1 A style whose family nothing has is drawn with the bundled font
+**Goal:** text whose families no loaded, bundled or system font has is laid out with the bundled Roboto, as Flutter falls back to its default font, and not with no glyph.
+**Why:** in `gluttertest` (no system fonts) a style with `FontFamily: "monospace"`, with a name that is not installed, or with no family outside a `MaterialApp` was 0 wide and invisible in widget tests and goldens; Fishball had to name Roboto in `FontFamilyFallback`. The same held for an app on a machine with no fonts.
+**Read:** SPEC §10 ("Font fallback order"); `internal/text/fonts.go` (`Match`, `AddBundled`), `internal/text/layout/engine.go` (`candidates`, `ResolveFace`, `firstFace`).
+**Tasks:** (done in the step) `text.Collection.LastResort` (the first font of `AddBundled`); the layout tries it for a character after the families, `sans-serif` and the matcher's fallback, and as the first face of a style that has no other; SPEC §10 rule 4; the doc comments of `gluttertest`.
+**Tests:** `internal/text.TestLastResortIsTheFirstBundledFont`; `internal/text/layout.TestAFamilyThatNothingHasIsDrawnWithTheBundledFont` and the changed `TestLoadedSansSerifIsTheDefaultFont` (which asserted the 0 width); `gluttertest.TestTextOfAFamilyTheTestDoesNotHaveIsDrawnWithRoboto` (width and pixels); the whole suite with its goldens.
+**Proof:** none. **Manual checks:** none.
+
+### 41.2 `PopupMenuButton` calls `OnSelected` after the pop
+**Goal:** `OnSelected` and `OnCanceled` of `PopupMenuButton` may push a route (a confirmation dialog after "Delete").
+**Why:** they ran inside `route.PoppedThen`, while the navigator was popping the menu's route, so `ShowDialog` from `OnSelected` reported `NavigatorLocked` and showed nothing. Flutter calls them from the `then` of `showMenu`'s future, after the pop. Fishball posted its action to the next frame.
+**Read:** SPEC §12.10 (the `PopupMenuButton` row); `material/popup_menu.go` (`showButtonMenu`), `material/dropdown.go` (which already posts its `OnChanged`), `widgets/route.go` (`PoppedThen`).
+**Tasks:** (done in the step) the callback of `PoppedThen` posts its work to the binding (`Post`), reads the widget again there and does nothing when the state has left the tree; the SPEC row.
+**Tests:** `material.TestPopupMenuButtonCallbacksMayChangeTheNavigator` (a dialog and a page from `OnSelected`, a dialog from `OnCanceled`; fails with `NavigatorLocked` before the change); `TestPopupMenuButtonSelects` unchanged.
+**Proof:** none. **Manual checks:** none.
+

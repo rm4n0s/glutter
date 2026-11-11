@@ -662,7 +662,9 @@ The fonts of a style are tried in the order `FontFamily`, then each `FontFamilyF
 entry, then the system's default font; a name that no installed or loaded font has gives
 nothing, so `FontFamilyFallback: []string{"monospace"}` reaches the user's monospace font
 (`monospace`, `sans-serif` and `serif` stand for the system's own). In a widget test, give the
-fonts to `gluttertest.Opts.Fonts`.
+fonts to `gluttertest.Opts.Fonts`. When neither the style nor the system has a font (a widget
+test has no system fonts, so `monospace` is nothing there), the bundled Roboto draws the text,
+as Flutter's default font does; before 1.16.4 such text was laid out empty and invisible.
 
 Flutter gives a tab no stops: it is a white space. A code editor wants it to advance to the next
 tab stop, so `TextPainterOpts.TabSize` (and `ui.ParagraphStyleOpts.TabSize` under it) is the

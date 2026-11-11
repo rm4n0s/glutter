@@ -71,8 +71,8 @@ type Opts struct {
 	// and Material Icons: a golden test can then show monospace text, or any text,
 	// the same on every machine. Like the fonts of RunAppOpts.Fonts, several fonts
 	// of one family make a family of weights and slants. The engine has no system
-	// fonts. A font that fails to load fails the test, and Fonts together with
-	// TextEngine fails it too.
+	// fonts: a family that no font here has is drawn with Roboto. A font that fails
+	// to load fails the test, and Fonts together with TextEngine fails it too.
 	//
 	// Flutter: flutter_test/lib/src/binding.dart (FontLoader in a test)
 	Fonts []Font

@@ -276,7 +276,7 @@ func (e *Engine) lookupFonts(families []string, w int, italic bool, lang string,
 }
 
 // candidates lists the font files for the style: those of each family in turn, then
-// the system's default family.
+// the system's default family. It is empty when none of them has a font (lastResort).
 func (f *styleFonts) candidates() []text.FontFile {
 	if f.loaded {
 		return f.files
@@ -362,13 +362,24 @@ func (f *styleFonts) firstFace() *font.Face {
 		return f.first
 	}
 	f.firstTried = true
-	for _, file := range f.candidates() {
+	for _, file := range append(slices.Clip(f.candidates()), f.lastResort()...) {
 		if face := f.face(file); face != nil {
 			f.first = face
 			break
 		}
 	}
 	return f.first
+}
+
+// lastResort is the bundled font that draws what no family of the style and no font of the system can
+// (text.Collection.LastResort), as a list for firstWith; empty when the program bundles no font. A style
+// whose family nothing has (a name that is not installed, "monospace" where there is no system font, as in
+// gluttertest) is drawn with it instead of not at all.
+func (f *styleFonts) lastResort() []text.FontFile {
+	if file, ok := f.e.fonts.LastResort(); ok {
+		return []text.FontFile{file}
+	}
+	return nil
 }
 
 // choosesNoFont says whether the character is one that has no glyph of its own, so that searching the
@@ -420,6 +431,10 @@ func (f *styleFonts) ResolveFace(r rune) *font.Face {
 					break
 				}
 			}
+		}
+		if found == nil {
+			// Neither the style nor the system has the character: the bundled font, before the missing-glyph box.
+			found = f.firstWith(f.lastResort(), r)
 		}
 		if found == nil {
 			found = f.firstFace()

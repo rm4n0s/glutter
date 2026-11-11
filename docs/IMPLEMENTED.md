@@ -6162,3 +6162,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Proof:** none as a picture. Emetos built on this change, with the link an app gets: a click on "Trust Repository" posted through the window server closes the dialog and writes the trust file; with the view's link alone (`GLUTTER_DISPLAYLINK=ca`) the same click does nothing. The owner then used that build through Screen Sharing and confirmed that clicks answer and that the traffic lights of step 39.1 look right (2026-11-11).
 - **Manual checks:** `docs/MANUAL-CHECKS.md`, 40.2 (a monitor that wakes and sleeps while the app runs).
 - **Deviations and follow-ups:** a window that is covered or on another space and asks for frames is now drawn at the `CVDisplayLink`'s pace instead of not at all (SPEC §29.3 says why); `CVDisplayLink` is deprecated since macOS 15 and still works on macOS 27, and when it goes the fallback becomes a timer.
+
+## 41.1 A style whose family nothing has is drawn with the bundled font
+
+- **Date:** 2026-11-11
+- **Branch:** fix/step-41.1-default-font
+- **Summary:** the first of two entries of Fishball's list of Glutter issues that the owner passed on. Text whose families no loaded, bundled or system font has was laid out with no glyph (0 wide, invisible): `monospace` in `gluttertest`, which has no system fonts, a name that is not installed, a style with no family outside a `MaterialApp`. `text.Collection.LastResort` is the first font registered with `AddBundled` (Roboto), and the layout uses it for a character after the style's families, `sans-serif` and the matcher's fallback, and as the first face of a style that has no other (SPEC §10, rule 4 of the fallback order). `Match` and `ResolveFont` are unchanged: a family that nothing has still gives no font of its own.
+- **Tests:** `internal/text.TestLastResortIsTheFirstBundledFont`; `internal/text/layout.TestAFamilyThatNothingHasIsDrawnWithTheBundledFont` (no family, a generic family, a name that is not installed, fallbacks, a loaded fallback and a loaded family keep their font); `gluttertest.TestTextOfAFamilyTheTestDoesNotHaveIsDrawnWithRoboto` (width and drawn pixels). `TestLoadedSansSerifIsTheDefaultFont` asserted the 0 width and now asserts Roboto's.
+- **Goldens:** four changed, each looked at: `material/testdata/goldens/switch.adaptive.{android,iOS,macOS}.png` and `magnifier.position.default.png`. Their debug banner now has its word DEBUG, which was the invisible text of this very bug (the banner's style names no family); nothing else in them moved.
+- **Checks:** with step 41.2 (below), which is published with it.
+- **Proof:** none. **Manual checks:** none.
+- **Deviations and follow-ups:** Fishball can drop its workaround (`FontFamilyFallback` naming Roboto in `internal/gui/kit/styles.go`) when it moves to 1.16.4; it is harmless if kept.
+
