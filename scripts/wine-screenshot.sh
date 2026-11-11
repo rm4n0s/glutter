@@ -10,7 +10,10 @@
 # so scripts/wine-exec.sh uses that server instead of starting its own. After GLUTTER_SHOT_DELAY
 # seconds (3 by default) the root window is saved with ImageMagick's `import -window root`, and the
 # command is stopped (TERM, then `wineserver -k`). If the command ends before the delay, nothing is
-# saved and the status is 1.
+# saved and the status is 1. With GLUTTER_SHOT_READY=<text> the delay starts when the command's output
+# has that text (`glutter-windows shot -screen` sets it to the engine's "first frame presented": Wine
+# takes seconds to draw the first frame), at most GLUTTER_SHOT_READY_TIMEOUT seconds (90) after the
+# start; the output is then shown when the script ends.
 #
 # Needs Wine, Xvfb and ImageMagick: sudo dnf install ImageMagick
 #
@@ -52,8 +55,28 @@ export GLUTTER_SHOT_DELAY="${GLUTTER_SHOT_DELAY:-3}"
 
 exec "$ROOT/scripts/headless-x11.sh" -- bash -c '
   ulimit -c 1
-  "$@" &
-  cmd=$!
+  if [[ -n "${GLUTTER_SHOT_READY:-}" ]]; then
+    # The output goes to a file that is searched for the line, and is shown when the script ends.
+    log=$(mktemp)
+    trap "cat \"\$log\"; rm -f \"\$log\"" EXIT
+    "$@" >"$log" 2>&1 &
+    cmd=$!
+    for ((i = 0; ; i++)); do
+      grep -qF -- "$GLUTTER_SHOT_READY" "$log" && break
+      if ! kill -0 "$cmd" 2>/dev/null; then
+        echo "wine-screenshot: the command ended before it logged \"$GLUTTER_SHOT_READY\"" >&2
+        exit 1
+      fi
+      if ((i >= ${GLUTTER_SHOT_READY_TIMEOUT:-90} * 10)); then
+        echo "wine-screenshot: no \"$GLUTTER_SHOT_READY\" in ${GLUTTER_SHOT_READY_TIMEOUT:-90} s; capturing anyway" >&2
+        break
+      fi
+      sleep 0.1
+    done
+  else
+    "$@" &
+    cmd=$!
+  fi
   status=1
   for ((i = 0; i < GLUTTER_SHOT_DELAY * 10; i++)); do
     if ! kill -0 "$cmd" 2>/dev/null; then

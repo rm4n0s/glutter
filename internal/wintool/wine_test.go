@@ -133,6 +133,10 @@ func TestShotOfTheScreen(t *testing.T) {
 	if !slices.Contains(f.calls[0].Env, "GLUTTER_SHOT_DELAY=5") || !slices.Contains(f.calls[0].Env, "GLUTTER_A=b") {
 		t.Errorf("env = %v, want the delay and the app's variable", f.calls[0].Env)
 	}
+	// The delay counts from the app's first frame: Wine takes seconds to draw it.
+	if !slices.Contains(f.calls[0].Env, "GLUTTER_SHOT_READY=first frame presented") {
+		t.Errorf("env = %v, want the line of the first frame that the capture waits for", f.calls[0].Env)
+	}
 	for _, kv := range f.calls[0].Env {
 		if strings.HasPrefix(kv, "GLUTTER_SCREENSHOT=") {
 			t.Errorf("a screen capture sets %s: the app would exit before the capture", kv)

@@ -130,12 +130,18 @@ type ShotOptions struct {
 	// Screen captures the whole screen of the X server (title bar, other windows, dialogs) instead of
 	// the app's own frame. It needs a ScreenLauncher.
 	Screen bool
-	// Settle is how long to wait before the capture of the screen (3 seconds when zero); it is the
-	// value of GLUTTER_SHOT_DELAY.
+	// Settle is how long to wait, after the app logged its first frame (ShotReadyLine), before the
+	// capture of the screen (3 seconds when zero); it is the value of GLUTTER_SHOT_DELAY.
 	Settle time.Duration
 	// Timeout is how long the app may run (2 minutes when zero).
 	Timeout time.Duration
 }
+
+// ShotReadyLine is the line of the engine's log that a capture of the screen waits for before it
+// settles: the app has presented its first frame (scripts/wine-screenshot.sh, GLUTTER_SHOT_READY).
+//
+// Flutter: no counterpart
+const ShotReadyLine = "first frame presented"
 
 // Shot is proof method F (SPEC §25.13): it runs the .exe with GLUTTER_SCREENSHOT, so that the app
 // saves its own first frame as a PNG and ends, and returns the PNG together with the output of the
@@ -166,7 +172,10 @@ func Shot(ctx context.Context, l Launcher, exe string, o ShotOptions) (png []byt
 		if settle <= 0 {
 			settle = 3 * time.Second
 		}
-		opts.Env = append(opts.Env, "GLUTTER_SHOT_DELAY="+strconv.Itoa(max(1, int(settle.Round(time.Second).Seconds()))))
+		// The settle counts from the first frame, not from the launch: Wine and the renderer take
+		// seconds before the window is drawn (5 s for the counter under vkd3d on lavapipe).
+		opts.Env = append(opts.Env, "GLUTTER_SHOT_READY="+ShotReadyLine,
+			"GLUTTER_SHOT_DELAY="+strconv.Itoa(max(1, int(settle.Round(time.Second).Seconds()))))
 		if res, err = sl.Capture(ctx, exe, file, opts); err != nil {
 			return nil, res.Output, err
 		}
