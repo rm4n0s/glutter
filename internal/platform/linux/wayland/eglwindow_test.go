@@ -173,6 +173,19 @@ func (e *eglEnv) frameDone() {
 	e.srv.FrameDone()
 }
 
+// settle lets the loop finish what it is doing (a frame and its swap) and makes a roundtrip, so that the fake
+// compositor, which reads the requests on a goroutine of its own, has read every request sent before it answers.
+// A test reads the compositor's requests or held callbacks only after it (found in step 36.2: the cgo-free run of
+// every package at once read them too early).
+func (e *eglEnv) settle() {
+	e.t.Helper()
+	var err error
+	e.onLoop(func() { err = e.p.sess.conn.Roundtrip() })
+	if err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 func (e *eglEnv) onLoop(fn func()) {
 	e.t.Helper()
 	finished := make(chan struct{})
@@ -191,6 +204,7 @@ func TestEGLWindowHandshakeOrder(t *testing.T) {
 	// Metrics first, then the frame; the frame callback is requested before the
 	// commit that the swap makes, and the configure is acknowledged before that
 	// commit as well.
+	e.settle()
 	lines := e.srv.Requests()
 	order := []string{
 		`xdg_toplevel.set_title "Glutter dev window"`,
@@ -224,6 +238,7 @@ func TestEGLWindowHandshakeOrder(t *testing.T) {
 func TestEGLConfigureRendersWithoutWaitingForTheFrameCallback(t *testing.T) {
 	e := startEGLWindow(t, true, fakecomp.ToplevelConfigure{})
 	waitUntil(t, func() bool { return e.h.frameCount() == 1 }, "the first frame was never requested")
+	e.settle()
 	if e.srv.HeldFrames() != 1 {
 		t.Fatalf("held frame callbacks = %d, want the one of the first frame", e.srv.HeldFrames())
 	}
@@ -236,6 +251,7 @@ func TestEGLConfigureRendersWithoutWaitingForTheFrameCallback(t *testing.T) {
 	if m := e.h.metricsSeen(); len(m) != 2 || m[1].PhysicalSize != (ui.Size{Width: 300, Height: 200}) {
 		t.Errorf("metrics = %+v, want 640x400 and then 300x200", m)
 	}
+	e.settle()
 	lines := e.srv.Requests()
 	// The second configure's ack comes before its commit.
 	ack := index(lines, index(lines, 0, "xdg_surface.ack_configure")+1, "xdg_surface.ack_configure")
@@ -300,11 +316,7 @@ func TestEGLFramePacing(t *testing.T) {
 		e.frameDone()
 		waitUntil(t, func() bool { return e.h.frameCount() == want }, "the animation did not continue after a frame callback")
 	}
-	// The fake compositor reads the frame request of frame 8 on a goroutine of its own, maybe after the client drew it
-	// (found in step 36.2: "0 callbacks held" in a cgo-free run of every package at once): wait for it, then check that
-	// no second one comes.
-	waitUntil(t, func() bool { return e.srv.HeldFrames() >= 1 }, "the compositor never got the frame request of the last frame")
-	time.Sleep(50 * time.Millisecond)
+	e.settle()
 	if n := e.srv.HeldFrames(); n != 1 {
 		t.Errorf("%d callbacks held, want 1: one frame in flight at a time", n)
 	}
