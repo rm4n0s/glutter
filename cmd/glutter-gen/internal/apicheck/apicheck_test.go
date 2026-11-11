@@ -468,7 +468,9 @@ func TestCheckNames(t *testing.T) {
 
 func TestCheckNamesSkipsWhatIsNotOurs(t *testing.T) {
 	root := writePackage(t, "package pkg\n")
-	for _, dir := range []string{"reference/sdl", "third_party/sdl", "pkg/testdata"} {
+	// The directories that start with "_" or "." are not packages of the module for the go tool; the docs test writes
+	// the guide's programs into docs/_guidecheck and removes them while this runs (found in step 36.2: "no such file").
+	for _, dir := range []string{"reference/sdl", "third_party/sdl", "pkg/testdata", "docs/_guidecheck/guide_10", "pkg/.cache"} {
 		if err := os.MkdirAll(filepath.Join(root, dir), 0o755); err != nil {
 			t.Fatal(err)
 		}

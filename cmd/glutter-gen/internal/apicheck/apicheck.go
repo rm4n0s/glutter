@@ -246,7 +246,9 @@ func CheckNames(root string) ([]Violation, error) {
 			return err
 		}
 		if d.IsDir() {
-			if path != root && skippedDirs[d.Name()] {
+			// The go tool ignores the directories whose names start with "_" or ".": they hold no package of the module
+			// (docs/_guidecheck is made and removed by the docs test while this may run).
+			if path != root && (skippedDirs[d.Name()] || strings.HasPrefix(d.Name(), "_") || strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			return nil

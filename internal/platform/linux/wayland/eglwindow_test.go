@@ -300,6 +300,11 @@ func TestEGLFramePacing(t *testing.T) {
 		e.frameDone()
 		waitUntil(t, func() bool { return e.h.frameCount() == want }, "the animation did not continue after a frame callback")
 	}
+	// The fake compositor reads the frame request of frame 8 on a goroutine of its own, maybe after the client drew it
+	// (found in step 36.2: "0 callbacks held" in a cgo-free run of every package at once): wait for it, then check that
+	// no second one comes.
+	waitUntil(t, func() bool { return e.srv.HeldFrames() >= 1 }, "the compositor never got the frame request of the last frame")
+	time.Sleep(50 * time.Millisecond)
 	if n := e.srv.HeldFrames(); n != 1 {
 		t.Errorf("%d callbacks held, want 1: one frame in flight at a time", n)
 	}
