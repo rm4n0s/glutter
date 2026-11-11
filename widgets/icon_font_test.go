@@ -26,7 +26,7 @@ func TestIconWithAFontThatCannotBeLoadedReportsItOnce(t *testing.T) {
 	icon := IconData{CodePoint: 0xe000, FontFamily: "Broken", FontPackage: "test", Font: font}
 	ts := gluttertest.New(t)
 	ts.PumpWidget(iconWidgetOf(icon))
-	requireErrorTag(t, takeFirst(t, ts), "FontDataInvalid")
+	_ = requireErrorTag(t, takeFirst(t, ts), "FontDataInvalid")
 	ts.PumpWidget(iconWidgetOf(IconData{CodePoint: 0xe001, FontFamily: "Broken", FontPackage: "test", Font: font}))
 	if errs := ts.TakeErrors(); len(errs) != 0 {
 		t.Errorf("the font was reported again: %v", errs)

@@ -1,3 +1,8 @@
+// Package pointerconv is the converter of the pointer events of a platform that reports them raw, as
+// Flutter's engine has one (Converter): it keeps the state of each device and synthesizes the events
+// that the framework expects in between.
+//
+// Flutter: lib/ui/window/pointer_data_packet_converter.cc
 package pointerconv
 
 import "github.com/rm4n0s/glutter/ui"

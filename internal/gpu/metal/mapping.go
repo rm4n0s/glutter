@@ -44,7 +44,7 @@ const (
 // (MTLResourceOptions).
 const (
 	resourceCPUCacheWriteCombined uint64 = 1
-	resourceStorageShift                 = 4
+	resourceStorageShift          uint64 = 4
 )
 
 // resourceOptions makes the options of a buffer of the storage mode; writeCombined says that the CPU only
@@ -417,15 +417,6 @@ func storeAction(op explicit.StoreOp, resolve bool) uint64 {
 	}
 	return storeDontCare
 }
-
-// The index types and the step functions of the vertex buffers (MTLIndexType, MTLVertexStepFunction).
-const (
-	indexUInt16 uint64 = 0
-	indexUInt32 uint64 = 1
-
-	stepPerVertex   uint64 = 1
-	stepPerInstance uint64 = 2
-)
 
 // The vertex formats (MTLVertexFormat).
 const (

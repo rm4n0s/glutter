@@ -198,16 +198,20 @@ func oneStart(ctx context.Context, exe string, o perfOptions, dir, cache string)
 	if err := cmd.Start(); err != nil {
 		return startResult{}, errors.NewErr(tagMacOSPerfFailed, err).SetMetadata("package", o.pkg)
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	var waitErr error
+	done := make(chan struct{}) // closed when the process has ended; waitErr is then its exit status
+	go func() {
+		waitErr = cmd.Wait()
+		close(done)
+	}()
 	select {
-	case err := <-done:
-		if err != nil {
+	case <-done:
+		if err := waitErr; err != nil {
 			return startResult{}, errors.NewErr(tagMacOSPerfFailed, err).SetMetadata("package", o.pkg, "output", log.String())
 		}
 	case <-ctx.Done():
 		killGroup(cmd)
-		<-done
+		<-done // killed: the exit status is the kill's, not the app's
 		return startResult{}, errors.New(tagMacOSPerfFailed, "the app did not start in time", "package", o.pkg, "output", log.String())
 	}
 	wall := time.Since(begin)
@@ -239,8 +243,11 @@ func window(ctx context.Context, exe string, o perfOptions, cache string) (windo
 	if err := cmd.Start(); err != nil {
 		return w, errors.NewErr(tagMacOSPerfFailed, err).SetMetadata("package", o.pkg)
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	done := make(chan struct{}) // closed when the process has ended
+	go func() {
+		_ = cmd.Wait() // the status is not needed: the app is killed at the end, and the log says why it ended before
+		close(done)
+	}()
 	defer func() {
 		killGroup(cmd)
 		<-done
@@ -249,8 +256,7 @@ func window(ctx context.Context, exe string, o perfOptions, cache string) (windo
 		select {
 		case <-time.After(d):
 			return nil
-		case err := <-done:
-			done <- err
+		case <-done:
 			return errors.New(tagMacOSPerfFailed, "the app ended during the measurement", "package", o.pkg, "output", log.String())
 		case <-ctx.Done():
 			return errors.NewErr(tagMacOSPerfFailed, ctx.Err())

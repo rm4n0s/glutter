@@ -28,14 +28,3 @@ func tabletDetail(pressure, tiltX, tiltY float64) pointerDetail {
 }
 
 func clamp1(v float64) float64 { return math.Min(1, math.Max(-1, v)) }
-
-// pointingDevice is NSPointingDeviceType: what the tablet says is in proximity.
-type pointingDevice int
-
-// The values of NSPointingDeviceType.
-const (
-	pointingUnknown pointingDevice = 0
-	pointingPen     pointingDevice = 1
-	pointingCursor  pointingDevice = 2
-	pointingEraser  pointingDevice = 3
-)

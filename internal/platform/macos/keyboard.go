@@ -2,6 +2,7 @@ package macos
 
 import (
 	"time"
+	"unicode/utf8"
 
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -392,11 +393,8 @@ func toLower(n uint64) uint64 {
 //
 // Flutter: FlutterEmbedderKeyResponder.mm getEventString
 func eventString(characters string) string {
-	for _, c := range characters {
-		if c >= 0xf700 && c <= 0xf7ff {
-			return ""
-		}
-		break
+	if c, _ := utf8.DecodeRuneInString(characters); characters != "" && c >= 0xf700 && c <= 0xf7ff {
+		return ""
 	}
 	return characters
 }

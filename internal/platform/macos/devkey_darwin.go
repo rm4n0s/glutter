@@ -10,6 +10,24 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 )
 
+// devModifier is a modifier key of a script: its key code, its device-independent flag and the
+// device-dependent flag that tells the left key.
+type devModifier struct {
+	code uint16
+	flag uint64
+	side uint64
+}
+
+var devModifierKeys = map[string]devModifier{
+	"shift":   {0x38, 1 << 17, flagShiftLeft},
+	"control": {0x3b, 1 << 18, flagControlLeft},
+	"alt":     {0x3a, 1 << 19, flagAltLeft},
+	"meta":    {0x37, 1 << 20, flagMetaLeft},
+}
+
+// devBaseFlags is what the flags of every real event have: the non-coalesced mask.
+const devBaseFlags uint64 = 0x100
+
 // The dev events that make key input (SPEC §29.6) build real NSEvents and give them to the key handling of
 // the first window, the function that keyDown:, keyUp: and flagsChanged: call: a key that nobody takes is
 // not given to the next responder (it would beep), and nothing is posted to the system.

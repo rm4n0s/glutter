@@ -10,6 +10,9 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 )
 
+// devModifierOrder is the order in which the modifiers of a step are pressed.
+var devModifierOrder = []string{"shift", "control", "alt", "meta"}
+
 // devTouchID is the identity of the touch that a script makes: no UITouch has it.
 const devTouchID uintptr = 0xd00d
 

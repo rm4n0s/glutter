@@ -140,13 +140,10 @@ type pointerMachine struct {
 	panPhase, scalePhase, rotPhase evPhase
 	panX, panY, zoom, rotation     float64
 	lastPanX, lastPanY             float64
-	panView                        ui.ViewID
 	panIdentifier                  int
 	lastMomentum                   time.Duration
 	haveMomentum                   bool
 	pendingExit                    bool
-	lastMouseX, lastMouseY         float64
-	mouseView                      ui.ViewID
 }
 
 func newPointerMachine() *pointerMachine {

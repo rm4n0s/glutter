@@ -390,7 +390,7 @@ func TestBuildMakesAUniversalSignedBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the executable is not a universal Mach-O: %v", err)
 	}
-	defer ff.Close()
+	defer func() { _ = ff.Close() }() // a file that was only read
 	if len(ff.Arches) != 2 || ff.Arches[0].Cpu != macho.CpuArm64 || ff.Arches[1].Cpu != macho.CpuAmd64 {
 		t.Errorf("arches = %+v", ff.Arches)
 	}

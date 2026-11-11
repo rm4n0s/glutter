@@ -33,6 +33,12 @@ linters:
       - path: internal/gpu/vulkan/structs\.go
         linters:
           - unused
+      # The Go mirrors of Metal's structures are in a file with no OS tag (their layout is checked
+      # against the SDK's headers) and only the darwin files use them, which a lint on another
+      # system does not compile.
+      - path: internal/gpu/metal/structs\.go
+        linters:
+          - unused
 
 formatters:
   enable:

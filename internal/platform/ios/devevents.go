@@ -189,9 +189,6 @@ var devModifiers = map[string]struct {
 	"shift": {keyLeftShift, flagShiftAny}, "control": {keyLeftControl, flagControlAny}, "alt": {keyLeftAlt, flagAltAny}, "meta": {keyLeftGUI, flagMetaAny},
 }
 
-// devModifierOrder is the order in which the modifiers of a step are pressed.
-var devModifierOrder = []string{"shift", "control", "alt", "meta"}
-
 // devKeyCodes are the key codes (UIKeyboardHIDUsage) of the keys a script presses, by Flutter's physical key names.
 var devKeyCodes = func() map[string]uint32 {
 	m := map[string]uint32{

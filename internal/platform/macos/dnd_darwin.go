@@ -11,6 +11,9 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
+// droppedTypes are the pasteboard types that the view registers for: the ones a drop is read from.
+var droppedTypes = []string{pbFileURL, pbURL, pbText, pbPlainText, pbOldString}
+
 // The glue of drag and drop (SPEC §29.9): the view is an NSDraggingDestination, and StartDrag begins an
 // NSDraggingSession whose source is a class that Go implements. The rules are in dnd.go.
 

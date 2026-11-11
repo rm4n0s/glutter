@@ -92,26 +92,6 @@ func fourcc(s string) uint32 {
 	return uint32(s[0])<<24 | uint32(s[1])<<16 | uint32(s[2])<<8 | uint32(s[3])
 }
 
-// The property selectors, scopes and queue properties that the backend uses (AudioHardware.h, AudioQueue.h).
-var (
-	selDevices       = fourcc("dev#")
-	selDefaultOutput = fourcc("dOut")
-	selDefaultInput  = fourcc("dIn ")
-	selName          = fourcc("lnam")
-	selUID           = fourcc("uid ")
-	selStreamConfig  = fourcc("slay")
-	selNominalRate   = fourcc("nsrt")
-	selIsAlive       = fourcc("livn")
-	scopeGlobal      = fourcc("glob")
-	scopeInput       = fourcc("inpt")
-	scopeOutput      = fourcc("outp")
-	queueCurrentDev  = fourcc("aqcd")
-	queueChannelLay  = fourcc("aqcl")
-)
-
-// systemObject is the AudioObjectID of the system object (kAudioObjectSystemObject).
-const systemObject = 1
-
 // PropertyAddress is the Go mirror of AudioObjectPropertyAddress.
 //
 // Flutter: no counterpart

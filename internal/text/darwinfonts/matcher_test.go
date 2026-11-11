@@ -218,12 +218,12 @@ func TestFallbackFindsAFontForACharacter(t *testing.T) {
 	var asked []string
 	system := func(family string, r rune, lang string) (FontFile, bool) {
 		asked = append(asked, family+"/"+string(r)+"/"+lang)
-		switch {
-		case r == '한':
+		switch r {
+		case '한':
 			return FontFile{Path: fontDir + "AppleSDGothicNeo.ttc", Family: "Apple SD Gothic Neo"}, true
-		case r == 0x1F4A9 || r == 0x0E02:
+		case 0x1F4A9, 0x0E02:
 			return FontFile{Path: fontDir + "LastResort.otf", Family: "LastResort"}, true
-		case r == 0x2603:
+		case 0x2603:
 			// Core Text names a font that has no glyph in the file: ignored, the chain goes on.
 			return FontFile{Path: fontDir + "Nothing.ttf", Family: "Nothing"}, true
 		}

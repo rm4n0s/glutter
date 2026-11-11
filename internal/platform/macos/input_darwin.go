@@ -11,6 +11,17 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
+// pointingDevice is NSPointingDeviceType: what the tablet says is in proximity.
+type pointingDevice int
+
+// The values of NSPointingDeviceType.
+const (
+	pointingUnknown pointingDevice = 0
+	pointingPen     pointingDevice = 1
+	pointingCursor  pointingDevice = 2
+	pointingEraser  pointingDevice = 3
+)
+
 // This file is the pointer input of the view (SPEC §29.6): the methods of GlutterView that AppKit calls for
 // the mouse, the trackpad and a tablet read the NSEvent into a pointerInput and hand it to the state machine
 // of mouse.go, and the data that came out goes to the handler.

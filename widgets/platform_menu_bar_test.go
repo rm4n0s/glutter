@@ -218,7 +218,7 @@ func TestOnlyOnePlatformMenuBarIsActive(t *testing.T) {
 	bar := func() Widget { return NewPlatformMenuBar([]PlatformMenuItem{NewPlatformMenu("M", nil)}) }
 	ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{textStyle: plainEditableStyle(), home: NewColumn([]Widget{bar(), bar()})}))
 	// The build of the second bar panicked, and the binding reported it.
-	requireErrorTag(t, ts.TakeError(), "PlatformMenuBarDuplicated")
+	_ = requireErrorTag(t, ts.TakeError(), "PlatformMenuBarDuplicated")
 }
 
 // refusingDelegate is a delegate that lets a bar lock it and then refuses to be unlocked.
@@ -238,7 +238,7 @@ func TestPlatformMenuBarThatCannotUnlockTheDelegateReportsIt(t *testing.T) {
 		t.Errorf("the bar set the menus %d times, want 1", d.sets)
 	}
 	ts.PumpWidget(testWidgetsApp(testWidgetsAppOpts{textStyle: plainEditableStyle(), home: ltrText("no bar")}))
-	requireErrorTag(t, ts.TakeError(), "PlatformMenuBarUnlockFailed")
+	_ = requireErrorTag(t, ts.TakeError(), "PlatformMenuBarUnlockFailed")
 }
 
 type fakeContext struct{ BuildContext }
@@ -248,7 +248,8 @@ func TestPlatformMenuDelegateLocksToOneContext(t *testing.T) {
 	ts := gluttertest.New(t)
 	d := ts.Binding.PlatformMenuDelegate()
 	c1, c2 := &fakeContext{}, &fakeContext{}
-	if !d.DebugLockDelegate(c1) || !d.DebugLockDelegate(c1) || d.DebugLockDelegate(c2) {
+	first, again, other := d.DebugLockDelegate(c1), d.DebugLockDelegate(c1), d.DebugLockDelegate(c2)
+	if !first || !again || other {
 		t.Error("the delegate was not locked to the first context")
 	}
 	if d.DebugUnlockDelegate(c2) || !d.DebugUnlockDelegate(c1) || !d.DebugLockDelegate(c2) {

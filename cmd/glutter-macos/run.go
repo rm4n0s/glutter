@@ -39,16 +39,20 @@ func runRun(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	if err := cmd.Start(); err != nil {
 		return errors.NewErr(tagMacOSRunFailed, err).SetMetadata("package", pkg)
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	var waitErr error
+	done := make(chan struct{}) // closed when the process has ended; waitErr is then its exit status
+	go func() {
+		waitErr = cmd.Wait()
+		close(done)
+	}()
 	select {
-	case err := <-done:
-		if err != nil {
+	case <-done:
+		if err := waitErr; err != nil {
 			return errors.NewErr(tagMacOSRunFailed, err).SetMetadata("package", pkg)
 		}
 	case <-ctx.Done():
 		killGroup(cmd)
-		<-done
+		<-done // killed: the exit status is the kill's, not the app's
 	}
 	return nil
 }

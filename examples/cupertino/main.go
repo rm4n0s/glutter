@@ -202,18 +202,6 @@ func homeTab(bc c.BuildContext, st *settingsState, setDark func(bool)) c.Widget 
 // settingsState is the state of the settings page.
 type settingsState struct{ airplane, dark bool }
 
-// listTab is a tab with a long list under a sliver bar.
-func listTab(title, label string, count int) c.Widget {
-	var rows []c.Widget
-	for i := 1; i <= count; i++ {
-		rows = append(rows, row(fmt.Sprintf("%s %d", label, i), func() {}))
-	}
-	return c.NewCupertinoPageScaffold(c.NewCustomScrollView([]c.Widget{
-		c.NewCupertinoSliverNavigationBar(c.CupertinoSliverNavigationBarOpts{LargeTitle: c.NewText(title)}),
-		c.NewSliverList(c.NewSliverChildListDelegate(rows)),
-	}))
-}
-
 // textTab is the page of the text: the fields in a list under the sliver bar. The first field has a selected word.
 func textTab() c.Widget {
 	return c.NewStatefulBuilder(func(_ c.BuildContext, _ c.StateSetter) c.Widget {
@@ -358,7 +346,7 @@ func pickersTab() c.Widget {
 
 func pickersContent(bc c.BuildContext) c.Widget {
 	chosen := time.Date(2026, time.November, 10, 9, 41, 0, 0, time.Local)
-	var timer time.Duration = 25 * time.Minute
+	timer := 25 * time.Minute
 	fruit := "Cherry"
 	fruits := []string{"Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig"}
 	fruitItems := make([]c.Widget, len(fruits))

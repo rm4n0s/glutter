@@ -94,7 +94,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if err != nil {
 		return errors.NewErr(tagMacOSShotFailed, err)
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }() // best effort: a temporary directory
 	exe := filepath.Join(tmp, "app")
 	if o.bundle {
 		res, err := buildBundle(ctx, o.pkg, &o.bf, tmp)
@@ -128,16 +128,20 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 	if err := cmd.Start(); err != nil {
 		return errors.NewErr(tagMacOSShotFailed, err).SetMetadata("package", o.pkg)
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	var waitErr error
+	done := make(chan struct{}) // closed when the process has ended; waitErr is then its exit status
+	go func() {
+		waitErr = cmd.Wait()
+		close(done)
+	}()
 	select {
-	case err := <-done:
-		if err != nil {
+	case <-done:
+		if err := waitErr; err != nil {
 			return errors.NewErr(tagMacOSShotFailed, err).SetMetadata("package", o.pkg)
 		}
 	case <-ctx.Done():
 		killGroup(cmd)
-		<-done
+		<-done // killed: the exit status is the kill's, not the app's
 		return errors.New(tagMacOSShotTimeout, "the app did not save its screenshot in time", "package", o.pkg, "timeout", o.timeout.String())
 	}
 	if _, err := os.Stat(abs); err != nil {

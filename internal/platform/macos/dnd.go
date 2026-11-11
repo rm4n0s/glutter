@@ -25,9 +25,6 @@ const (
 	pbJPEG      = "public.jpeg"
 )
 
-// droppedTypes are the pasteboard types that the view registers for: the ones a drop is read from.
-var droppedTypes = []string{pbFileURL, pbURL, pbText, pbPlainText, pbOldString}
-
 // mimeOf is the MIME type that the framework sees for a pasteboard type, "" for a type that it does not know.
 var mimeOf = map[string]string{
 	pbFileURL:   "text/uri-list",

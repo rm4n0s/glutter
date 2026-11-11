@@ -13,6 +13,15 @@ import (
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
 )
 
+// The index types and the step functions of the vertex buffers (MTLIndexType, MTLVertexStepFunction).
+const (
+	indexUInt16 uint64 = 0
+	indexUInt32 uint64 = 1
+
+	stepPerVertex   uint64 = 1
+	stepPerInstance uint64 = 2
+)
+
 // languageVersion24 is MTLLanguageVersion2_4: (2 << 16) | 4.
 const languageVersion24 uint64 = 2<<16 | 4
 

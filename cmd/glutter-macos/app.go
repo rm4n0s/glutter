@@ -78,15 +78,6 @@ func buildBundle(ctx context.Context, pkg string, bf *buildFlags, dir string) (m
 	return mactool.Build(ctx, o)
 }
 
-// absOf makes a path absolute for the process that is started somewhere else.
-func absOf(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", errors.NewErr(tagMacOSUsage, err).SetMetadata("path", p)
-	}
-	return abs, nil
-}
-
 // tempDir makes a temporary directory and the function that removes it.
 func tempDir(prefix string) (string, func(), error) {
 	dir, err := os.MkdirTemp("", prefix)

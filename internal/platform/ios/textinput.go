@@ -16,12 +16,6 @@ import (
 // textRange is a range of the document in UTF-16 units, as UITextRange is (a position is an offset); end is never before start.
 type textRange struct{ Start, End int }
 
-// length is the number of UTF-16 units of the range.
-func (r textRange) length() int { return r.End - r.Start }
-
-// empty says the range has no length: a caret.
-func (r textRange) empty() bool { return r.Start == r.End }
-
 // textInput is the text input of the platform: the document of the focused text field as UIKit sees it (the text with the text being
 // composed in it), the place of the caret, the traits and the view that the field is in. It belongs to the UI thread.
 type textInput struct {

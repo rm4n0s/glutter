@@ -34,14 +34,6 @@ func (r *recorder) PadTouch(t platform.PadTouch)     { r.touches = append(r.touc
 func (r *recorder) PadSensor(platform.PadSensor)     {}
 func (r *recorder) PadBattery(b platform.PadBattery) { r.batts = append(r.batts, b) }
 func (r *recorder) take() []platform.PadEvent        { e := r.events; r.events = nil; return e }
-func (r *recorder) padEvents(k platform.PadEventKind) (out []platform.PadEvent) {
-	for _, e := range r.events {
-		if e.Kind == k {
-			out = append(out, e)
-		}
-	}
-	return out
-}
 
 // fakeManager is the Manager under test.
 type fakeManager struct {

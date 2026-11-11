@@ -31,12 +31,12 @@ func Check(uri string) error {
 		return errors.New(tagOpenURIInvalid, "a URI is not empty and has no control character", "uri", uri)
 	}
 	scheme := mobile.URIScheme(uri)
-	switch {
-	case scheme == "":
+	switch scheme {
+	case "":
 		return errors.New(tagOpenURIInvalid, "a URI needs a scheme, such as https: or file:", "uri", uri)
-	case scheme == "javascript" || scheme == "vbscript":
+	case "javascript", "vbscript":
 		return errors.New(tagOpenURISchemeBlocked, "a URI that runs script is not opened", "uri", uri, "scheme", scheme)
-	case scheme == "file":
+	case "file":
 		name := fileURIName(uri)
 		if launchExtensions[strings.ToLower(path.Ext(name))] {
 			return errors.New(tagOpenURISchemeBlocked, "a file: URI of a program, a script or an installer is not opened", "uri", uri, "scheme", scheme, "name", name)

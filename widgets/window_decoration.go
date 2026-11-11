@@ -154,7 +154,7 @@ func (s *windowDecorationState) Build(bc BuildContext) Widget {
 	system := !info.SystemButtons.IsEmpty()
 	resizable := !info.Maximized && !info.Fullscreen && !info.Tiled && !system
 
-	var body Widget = child
+	body := child
 	if !info.Fullscreen {
 		if system {
 			s.tellBarHeight(bc, view, height)

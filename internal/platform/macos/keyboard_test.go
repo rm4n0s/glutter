@@ -35,11 +35,6 @@ const (
 	logF1          = 0x100000801
 )
 
-// sentKey is an event that the responder gave to the framework.
-type sentKey struct {
-	ui.KeyData
-}
-
 // keyRecorder is the send function of a responder that records the events and answers handled.
 type keyRecorder struct {
 	events  []ui.KeyData

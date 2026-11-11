@@ -66,9 +66,9 @@ func TestSurfacePoolAges(t *testing.T) {
 
 func TestSurfacePoolSkipsSurfacesInUse(t *testing.T) {
 	p, made := newFakePool(8)
-	p.Acquire(4, 4)
+	mustAcquire(t, p)
 	p.Present()
-	p.Acquire(4, 4)
+	mustAcquire(t, p)
 	p.Present()
 	// The surface of the first presentation is still read by the window server.
 	(*made)[0].inUse = true
@@ -83,9 +83,9 @@ func TestSurfacePoolSkipsSurfacesInUse(t *testing.T) {
 
 func TestSurfacePoolExhausted(t *testing.T) {
 	p, made := newFakePool(2)
-	p.Acquire(4, 4)
+	mustAcquire(t, p)
 	p.Present()
-	p.Acquire(4, 4)
+	mustAcquire(t, p)
 	p.Present()
 	for _, s := range *made {
 		s.inUse = true
@@ -129,9 +129,9 @@ func TestSurfacePoolGivesUpWhatWasNotPresented(t *testing.T) {
 
 func TestSurfacePoolNewSizeReleasesTheOldSurfaces(t *testing.T) {
 	p, made := newFakePool(8)
-	p.Acquire(4, 4)
+	mustAcquire(t, p)
 	p.Present()
-	p.Acquire(4, 4)
+	mustAcquire(t, p)
 	p.Present()
 	b, _ := p.Acquire(8, 6)
 	if b.Age != 0 || b.Width != 8 || b.Height != 6 {
@@ -149,4 +149,14 @@ func TestSurfacePoolNewSizeReleasesTheOldSurfaces(t *testing.T) {
 	if !(*made)[2].released || p.Len() != 0 {
 		t.Error("Close did not release the surfaces")
 	}
+}
+
+// mustAcquire takes a buffer of 4 x 4 pixels from the pool, as a frame does, and fails the test if it cannot.
+func mustAcquire(t *testing.T, p *SurfacePool) Buffer {
+	t.Helper()
+	b, err := p.Acquire(4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

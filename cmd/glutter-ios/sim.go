@@ -33,11 +33,10 @@ func (s *simFlags) add(fs *flag.FlagSet) {
 
 // started is an app that is installed and running on a booted device.
 type started struct {
-	sim     iostool.Simulator
-	device  iostool.Device
-	id      string
-	wasUp   bool
-	release func()
+	sim    iostool.Simulator
+	device iostool.Device
+	id     string
+	wasUp  bool
 }
 
 // prepare builds the app for the Simulator, boots the device (it remembers whether it was up already) and installs the app.
