@@ -366,7 +366,17 @@ func TestBuildMakesAUniversalSignedBundle(t *testing.T) {
 	needGo(t)
 	dir := tinyModule(t, tinyMain)
 	out := filepath.Join(t.TempDir(), "Tiny.app")
-	res, err := Build(context.Background(), BuildOptions{Package: ".", Dir: dir, Out: out, Archs: []string{"arm64", "amd64"}, Version: "3.1.4"})
+	o := BuildOptions{Package: ".", Dir: dir, Out: out, Archs: []string{"arm64", "amd64"}, Version: "3.1.4"}
+	if runtime.GOOS != "darwin" {
+		// codesign is a Mac's (SPEC §29.1): elsewhere a program that does nothing stands in for it, and the rest of the bundle is
+		// checked.
+		tool, err := exec.LookPath("true")
+		if err != nil {
+			t.Skip("no codesign and no true to stand in for it")
+		}
+		o.Sign.Tool = tool
+	}
+	res, err := Build(context.Background(), o)
 	if err != nil {
 		t.Fatal(err)
 	}
