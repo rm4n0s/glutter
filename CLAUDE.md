@@ -10,7 +10,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 ## Commands
 - Build: `go build ./...`. Glutter is cgo-free; `CGO_ENABLED=0 go build ./...` must always work
 - Build modes (SPEC §12.9): a plain `go build`, `go run` or `go install` is a release build (`foundation.ReleaseMode`); `-tags debug_mode` makes a debug build (the asserts, the diagnostics and the `GLUTTER_DEV_*` hooks of the examples and the platforms), `-tags glutter_profile` a profile build. The tools (`glutter-web`, `glutter-android`, `glutter-windows`, `glutter-macos`, `glutter-ios`) build release builds unless given `-debug`; their `shot` builds a debug build unless given `-debug=false`
-- Test all, in both modes: `go test -race ./...` (a release build) and `go test -race -tags debug_mode ./...` (a debug build) (the race detector needs cgo, so these need a C compiler). A test of debug-only behavior is in a file with `//go:build debug_mode` or skips when `foundation.DebugMode` is false
+- Test all, in both modes: `go test -race -timeout 30m ./...` (a release build) and `go test -race -timeout 30m -tags debug_mode ./...` (a debug build) (the race detector needs cgo, so these need a C compiler; under it the leak tests of `internal/gpu/explicit` and `cupertino` take more than the default 10 minutes a package). A test of debug-only behavior is in a file with `//go:build debug_mode` or skips when `foundation.DebugMode` is false
 - Test the cgo-free path: `CGO_ENABLED=0 go test ./...`
 - Test one package: `go test ./widgets -run TestName -v`
 - Tests that need a real display/GPU: `go test -race -tags 'glutter_display debug_mode' ./...`
@@ -42,7 +42,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - After changing dependencies: `go mod tidy`
 
 ## Definition of done
-Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run`, `go test -race ./...` and `go test -race -tags debug_mode ./...` (the tests in both modes), and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
+Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint run`, `go test -race -timeout 30m ./...` and `go test -race -timeout 30m -tags debug_mode ./...` (the tests in both modes), and fix anything they report. Say so explicitly if any step was skipped or failed. Also:
 - `CGO_ENABLED=0 go build ./...` and `CGO_ENABLED=0 go test ./...` pass (proves the library stays cgo-free)
 - From step 24.1 on: `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` passes (the error rules of SPEC §14.4)
 - From step 19.1 on: `GOOS=js GOARCH=wasm go build ./...`, `GOOS=js GOARCH=wasm go vet ./...`, `scripts/test-wasm.sh` and `scripts/test-wasm.sh -tags debug_mode` pass

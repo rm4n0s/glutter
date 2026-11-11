@@ -11,7 +11,9 @@
 # the tests of a package that need Linux are in files with the linux tag.
 #
 # Go's wasm loader fails when the environment is larger than its limit, so the tests
-# run with a minimal one (env -i with HOME, PATH, GOCACHE, GOMODCACHE and GOFLAGS).
+# run with a minimal one (env -i with HOME, PATH, GOCACHE, GOMODCACHE and GOFLAGS). A package may
+# take 30 minutes (the debug build of cupertino takes more than the default 10 under Node); a
+# -timeout of the arguments wins.
 # Needs Node.js (`node --version`; sudo dnf install nodejs).
 set -euo pipefail
 
@@ -49,4 +51,4 @@ exec env -i \
   GOMODCACHE="$gomodcache" \
   GOFLAGS="$goflags" \
   GOOS=js GOARCH=wasm \
-  go test "${args[@]}"
+  go test -timeout 30m "${args[@]}"

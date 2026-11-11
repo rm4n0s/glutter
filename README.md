@@ -525,7 +525,8 @@ done. [CLAUDE.md](CLAUDE.md) lists the commands:
 
 ```
 go build ./...                  # CGO_ENABLED=0 go build ./... must always work
-go test -race ./...
+go test -race -timeout 30m ./...                    # a release build, as go build makes
+go test -race -timeout 30m -tags debug_mode ./...   # and a debug build
 go vet ./... && golangci-lint run
 go generate ./...
 go run ./cmd/glutter-gen apicheck -allow cmd/glutter-gen/apicheck.allow

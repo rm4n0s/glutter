@@ -2664,9 +2664,9 @@ The first four rows are the desktop's, which Wine's numbers already meet; the co
   - The tests of an app that uses package `desktop` call `tester.FakeDesktop()` (`gluttertest`): a notification service, a StatusNotifierWatcher and a file chooser portal on the fake bus. The test reads `Notifications()`, `TrayMenu()` and `TrayProperty`, and acts like the user with `ClickTrayMenuItem`, `ActivateTray`, `InvokeNotificationAction`, `CloseNotification`, `AnswerFileChooser` and `CancelFileChooser`; `DisableFileChooser()` (1.7) takes the portal away, as on a desktop that has none, so that `OpenFiles`, `SaveFile` and `SaveFiles` fail with `FileChooserUnavailable` (a dialog that is open stays open); `WaitFor` runs the UI thread's posted functions while the app's goroutines work.
   - What the fake bus cannot show is tested against a real `dbus-daemon` that a test starts (it is skipped when the daemon is not installed): the types that godbus gives and takes (the layout `(ia{sv}av)`, the pixmaps, the errors of a missing service, which are values and not pointers) and the life of the connection.
 - **Both build modes**:
-  - `go test -race ./...` runs with cgo (purego uses the real cgo runtime)
+  - `go test -race -timeout 30m ./...` runs with cgo (purego uses the real cgo runtime); under the race detector the leak tests of `internal/gpu/explicit` and `cupertino` take more than the default 10 minutes a package (step 36.2)
   - `CGO_ENABLED=0 go test ./...` runs purego's cgo-free path, which users get
-  - both must pass
+  - both must pass, and the tests run as a release build (the default) and as a debug build (`-tags debug_mode`, §12.9)
 - **C struct layout tests** for every Go mirror of a C struct (§8.1 rule 3).
 - **Fuzz tests** cover the X11/Wayland event decoders, the XKB compose handling, the paragraph layout, and the image and font loaders.
 - **Vulkan** display tests (`glutter_display`) run under headless sway, and under Xvfb for X11, with Mesa's lavapipe (`VK_DRIVER_FILES` pointing at `lvp_icd.*.json`) and with validation on (§9.4); a validation error fails the test. Every golden scene is compared against `soft`, as for `gles`.
