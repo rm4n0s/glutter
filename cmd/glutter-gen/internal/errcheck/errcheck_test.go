@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/errors"
+
+	"github.com/rm4n0s/glutter/internal/iostool"
 )
 
 // fixtureModule writes a module with the path of Glutter, so that the checker treats its
@@ -423,6 +425,11 @@ func TestTheModuleKeepsTheErrorRules(t *testing.T) {
 		// the errcheck command fail in that case (SPEC §24.13).
 		t.Logf("the Android pass is left out: %v", err)
 		passes = WithoutAndroid(DefaultPasses)
+	}
+	if _, err := iostool.CheckXcode(context.Background(), nil); err != nil {
+		// Without Xcode the *_ios.go files cannot be read; the Mac runs them, and the errcheck command leaves the pass out too.
+		t.Logf("the iOS pass is left out: %v", err)
+		passes = WithoutIOS(passes)
 	}
 	vs, err := CheckModule(context.Background(), root, passes)
 	if err != nil {
