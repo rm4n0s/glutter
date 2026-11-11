@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"syscall/js"
 	"time"
 
@@ -164,8 +165,22 @@ func observe(p *probe) observations {
 		})
 		return s
 	}
-	key := func(el js.Value, typ, code, k string, ctrl bool) bool {
-		return synthetic.DispatchKey(el, synthetic.Key{Type: typ, Code: code, Key: k, Ctrl: ctrl})
+	// The shortcuts of the test are the platform's: Command on a Mac, an iPhone or an iPad, where the framework has
+	// its macOS bindings and the browser pastes with Command+V, and Control everywhere else. shortcut says the
+	// modifier is down; the modifier's own key is written as ControlLeft and sent as MetaLeft there.
+	platform := js.Global().Get("navigator").Get("platform").String()
+	apple := strings.HasPrefix(platform, "Mac") || strings.HasPrefix(platform, "iP")
+	key := func(el js.Value, typ, code, k string, shortcut bool) bool {
+		ev := synthetic.Key{Type: typ, Code: code, Key: k}
+		if apple {
+			ev.Meta = shortcut
+			if code == "ControlLeft" {
+				ev.Code, ev.Key = "MetaLeft", "Meta"
+			}
+		} else {
+			ev.Ctrl = shortcut
+		}
+		return synthetic.DispatchKey(el, ev)
 	}
 
 	// A tap on the single-line text field gives it the focus, and the platform puts its hidden field at the caret.
@@ -202,7 +217,7 @@ func observe(p *probe) observations {
 	o.KeyTypedPrevented = key(input, "keydown", "KeyA", "a", false)
 	key(input, "keyup", "KeyA", "a", false)
 	o.KeyTyped = read(p.single)
-	// Control+V is the browser's paste shortcut: the key is not given to the framework and not prevented.
+	// Control+V (Command+V on a Mac) is the browser's paste shortcut: the key is not given to the framework and not prevented.
 	o.PasteKeyPrevented = key(input, "keydown", "KeyV", "v", true)
 	key(input, "keyup", "KeyV", "v", true)
 	o.PasteKeyState = read(p.single)
@@ -263,7 +278,7 @@ func observe(p *probe) observations {
 	}
 	p.onUI(func() { o.WriteError = writeErr })
 
-	// Control+A and Control+C: the framework copies the selection with writeText, inside the key event.
+	// Control+A and Control+C (Command on a Mac): the framework copies the selection with writeText, inside the key event.
 	key(input, "keydown", "ControlLeft", "Control", true)
 	key(input, "keydown", "KeyA", "a", true)
 	key(input, "keyup", "KeyA", "a", true)
