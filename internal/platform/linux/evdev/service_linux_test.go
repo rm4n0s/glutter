@@ -1043,6 +1043,18 @@ func openFDs() int {
 	return len(entries)
 }
 
+// settledFDs is the smallest of a few counts of openFDs a few milliseconds apart. A service that polls opens a directory and the
+// attributes of the nodes for a moment at each look, and a count made during one is one too many (step 36.2: the leak test saw
+// 268 descriptors where there were 267 under load); a descriptor that leaked is in every count.
+func settledFDs() int {
+	least := openFDs()
+	for range 9 {
+		time.Sleep(2 * time.Millisecond)
+		least = min(least, openFDs())
+	}
+	return least
+}
+
 // TestLeaksPadsPluggedAndUnplugged plugs a pad in and out many times: the descriptors, the goroutines and the heap must stay
 // where they were (SPEC §15 "Memory over time").
 func TestLeaksPadsPluggedAndUnplugged(t *testing.T) {
@@ -1073,5 +1085,5 @@ func TestLeaksPadsPluggedAndUnplugged(t *testing.T) {
 		plugs = 0
 	}
 	leaktest.Run(t, "evdev/plug", func() func() { return step },
-		leaktest.Opts{N: 40, Warmup: 5, Counters: map[string]func() int{"descriptors": openFDs}})
+		leaktest.Opts{N: 40, Warmup: 5, Counters: map[string]func() int{"descriptors": settledFDs}})
 }
