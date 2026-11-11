@@ -288,6 +288,9 @@ func appShortcut(k services.LogicalKeyboardKey, o SingleActivatorOpts, intent In
 // is not given any, for the current target platform: activation, dismissal, the
 // focus traversal by Tab and the arrow keys, and scrolling.
 //
+// Deviation: GameButtonA activates on macOS and iOS too, where Flutter's map has
+// no such entry: a gamepad makes key events on every platform (SPEC §12.10).
+//
 // Flutter: widgets/app.dart WidgetsApp.defaultShortcuts
 func WidgetsAppDefaultShortcuts() ShortcutMap {
 	none := SingleActivatorOpts{}
@@ -307,10 +310,13 @@ func WidgetsAppDefaultShortcuts() ShortcutMap {
 		appShortcut(services.LogicalKeyboardKeyEnter, none, ActivateIntent{}),
 		appShortcut(services.LogicalKeyboardKeyNumpadEnter, none, ActivateIntent{}),
 		appShortcut(services.LogicalKeyboardKeySpace, none, ActivateIntent{}),
+		// Deviation: Flutter's shortcuts of macOS and iOS have no GameButtonA. Here a gamepad makes key events on
+		// every platform (SPEC §28.2), so its A button activates what its D-pad focused on a Mac and an iPhone
+		// too, natively and in their browsers (SPEC §12.10).
+		appShortcut(services.LogicalKeyboardKeyGameButtonA, none, ActivateIntent{}),
 	)
 	if !apple {
 		m = append(m,
-			appShortcut(services.LogicalKeyboardKeyGameButtonA, none, ActivateIntent{}),
 			appShortcut(services.LogicalKeyboardKeySelect, none, ActivateIntent{}),
 		)
 	}

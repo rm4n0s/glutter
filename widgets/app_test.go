@@ -97,6 +97,41 @@ func TestWidgetsApp(t *testing.T) {
 		}
 	})
 
+	// The A button of a gamepad activates on every platform: a pad makes key events everywhere (SPEC §28.2), and
+	// on macOS and iOS, where Flutter's map has no GameButtonA, its D-pad moved the focus and A did nothing.
+	// The Select key stays out of the Apple map, as in Flutter.
+	t.Run("the A button of a gamepad activates on every platform", func(t *testing.T) {
+		tests := []struct {
+			platform foundation.TargetPlatform
+			key      services.LogicalKeyboardKey
+			want     bool
+		}{
+			{foundation.TargetPlatformLinux, services.LogicalKeyboardKeyGameButtonA, true},
+			{foundation.TargetPlatformWindows, services.LogicalKeyboardKeyGameButtonA, true},
+			{foundation.TargetPlatformAndroid, services.LogicalKeyboardKeyGameButtonA, true},
+			{foundation.TargetPlatformMacOS, services.LogicalKeyboardKeyGameButtonA, true},
+			{foundation.TargetPlatformIOS, services.LogicalKeyboardKeyGameButtonA, true},
+			{foundation.TargetPlatformLinux, services.LogicalKeyboardKeySelect, true},
+			{foundation.TargetPlatformMacOS, services.LogicalKeyboardKeySelect, false},
+			{foundation.TargetPlatformIOS, services.LogicalKeyboardKeySelect, false},
+			{foundation.TargetPlatformMacOS, services.LogicalKeyboardKeyEnter, true},
+		}
+		for _, tt := range tests {
+			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(tt.platform))
+			ts := gluttertest.New(t)
+			checked := false
+			ts.PumpWidget(NewWidgetsApp(appColor, WidgetsAppOpts{
+				Builder: func(BuildContext, Widget) Widget { return testCheckbox(&checked) }}))
+			ts.Pump()
+			ts.SendKeyEvent(tt.key)
+			ts.PumpAndSettle()
+			foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]())
+			if checked != tt.want {
+				t.Errorf("%v on %v: activated = %v, want %v", tt.key, tt.platform, checked, tt.want)
+			}
+		}
+	})
+
 	t.Run("creates a Title", func(t *testing.T) {
 		ts := gluttertest.New(t)
 		ts.PumpWidget(NewWidgetsApp(appColor, WidgetsAppOpts{Builder: func(BuildContext, Widget) Widget { return NewContainer(nil) }}))

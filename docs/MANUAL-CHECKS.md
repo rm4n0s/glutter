@@ -1192,3 +1192,15 @@ A Mac with macOS 14 or later, used from another computer through Screen Sharing,
 
 Answers: _(not yet recorded)_
 
+
+## 42.1 Safari with a person at the keyboard
+
+Safari on a Mac (and Chrome on a Mac for point 1), with `go run ./cmd/glutter-web serve ./examples/editor` and the address it prints. The browser tests ran in Safari with keys and gestures made by script, which Safari does not trust as a person's.
+
+1. Click into the text, copy something elsewhere, press Command+V: the text is pasted at once, with no "Paste" button to press first. Command+C and Command+X copy and cut; Command+A selects all; Command+Z undoes.
+2. Type with a Chinese or Japanese input method: the composing text shows under the caret and commits once.
+3. Scroll the text with the trackpad and with a mouse wheel: the speed and the direction are the system's.
+4. `examples/dev/android-audio` served the same way: a click starts the tone (Safari allows sound only after a real gesture); with a microphone, the recording asks once and runs.
+5. With `?GLUTTER_RENDERER=webgl` added to the address, the page looks the same as without it (the WebGL 2 fallback on the screen; the tests read its frame back and did not look at it).
+
+Answers: _(not yet recorded)_

@@ -2066,6 +2066,10 @@ If you know Flutter on the web, this is what is the same and what is not.
   software renderer on a 2D canvas, chosen at the first frame (`?GLUTTER_RENDERER=webgl` in the
   address chooses by hand). The first two are the same engine as on Linux, so a frame looks the same
   there and here.
+- **Browsers.** The browser tests run in Chromium and Firefox, and since 1.16.5 they have been run in Safari on a
+  Mac as well; the README's "Browsers" paragraph says what passed there and what needs a person. On a Mac, an
+  iPhone or an iPad the framework uses its macOS bindings in the browser too (Command+C, Command+A), and
+  Command+V is the browser's own paste, so pasting never asks for the clipboard.
 - **Fonts.** There are no system fonts on the web. Text is drawn with the bundled Roboto and
   Material Icons and the fonts the app loads (`ui.LoadFontFromList`, `FontLoader`); a character that
   none has is a missing-glyph box, as in Flutter web without a fallback font.

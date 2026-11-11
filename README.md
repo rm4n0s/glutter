@@ -207,6 +207,7 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 - **Three more accessibility switches** (1.16.0): Reduce Transparency, Differentiate Without Color and On/Off Labels of macOS and iOS reach the framework (`MediaQueryReduceTransparencyOf`, `MediaQueryDifferentiateWithoutColorOf`, `MediaQueryOnOffSwitchLabelsOf`), and the Cupertino bars and popups become opaque, without their blur, under Reduce Transparency.
 - **A generic pad rumbles on macOS** (1.16.0) through the Force Feedback framework, as SDL's does. No such pad was connected to the Mac this was written on, so it is tested against a fake of the framework only.
 - **Fixed** (1.16.1): a `Post` from a goroutine that outlives the app crashed a macOS app at exit; it is dropped now, as on Linux.
+- **Safari** (1.16.5): the browser tests ran in Safari for the first time ("Browsers" below says what passed and what was not tested), and two bugs they found are fixed: in a text field of a web app on a Mac, an iPhone or an iPad, Command+V is left to the browser, which pastes without the "Paste" button that a clipboard read makes Safari show; and the A button of a gamepad activates the focused widget on macOS and iOS too, natively and in the browser (the D-pad moved the focus there and A did nothing).
 - **Fixed** (1.16.4): `PopupMenuButton` calls `OnSelected` and `OnCanceled` after the menu's route has been popped, so they can open a dialog or push a page (it reported `NavigatorLocked` before); and text whose font family nothing has (`monospace` in a widget test, a name that is not installed) is drawn with the bundled Roboto and no longer laid out empty.
 
 **What is new in 1.14.** The Cupertino look.
@@ -363,13 +364,20 @@ configuration; `globalThis.glutterConfig.hostElement` (a CSS selector, set in `i
 view in an element instead of the whole page.
 
 **Browsers.** Tried: Chromium 155 (WebGPU, WebGL 2) and Firefox 158 (WebGL 2; its WebGPU is off by
-default on Linux), both on Fedora 44, with the browser tests of the repository. Safari 27.2 on macOS 27 (Apple
-silicon) was tried by hand on 2026-11-11, not with the test suite: the counter, gallery, cupertino, scrolling,
-editor and svg examples draw their first frame with WebGPU (what the page picks there) and with WebGL 2, the
-counter also with the software renderer, and real clicks on the counter's button count with all three. Not
-tried in Safari: the keyboard and input methods, the clipboard, scrolling, audio and gamepads, and what the
-WebGL 2 fallback looks like on the screen (its frame was read back, not looked at). A page in a background
-tab draws nothing until it is shown, as in every browser. Other engines were not tried.
+default on Linux), both on Fedora 44, with the browser tests of the repository. **Safari** 27.2 on macOS 27 (Apple
+silicon) since 1.16.5: the same browser tests were run in it on 2026-11-11 (through a stand-in that opens each
+test page in Safari; its WebDriver needs "Allow remote automation", which was off). All fourteen web examples
+draw their first frame; the WebGPU renderer (what the page picks there) and the WebGL 2 renderer match the
+software renderer on every proof scene, and the 3D scenes of `viewport3d` match theirs; pointer, wheel and key
+input, the cursor, the context menu, text input with an input method, paste, copy, the host element, the
+renderer names, notifications and opening a URI, and gamepads pass. Real clicks on the counter's button count
+with all three renderers. Two bugs that only showed there are fixed in 1.16.5 (Command+V, and a gamepad's A
+button on Apple systems). **Not tested in Safari**, because it wants a person for them: sound and the
+microphone (Safari starts audio only after a real gesture, and the Mac had no microphone), motion sensors (a
+Mac has none, and a script cannot make a `DeviceMotionEvent` there), a device pixel ratio of 2, the keyboard
+of a real person, and what the WebGL 2 fallback looks like on the screen (its frames were read back, not
+looked at); `docs/MANUAL-CHECKS.md` 42.1 lists those. A page in a background tab draws nothing until it is
+shown, as in every browser. Other engines were not tried.
 
 **Renderers.** The page tries WebGPU, then WebGL 2, then a software renderer on a 2D canvas, once, at the
 first frame. `?GLUTTER_RENDERER=webgpu|webgl|soft` in the page's address (or `RunAppOpts.Renderer`)

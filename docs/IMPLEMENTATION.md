@@ -4802,3 +4802,23 @@ The owner passed on two entries of Fishball's list of Glutter issues on 2026-11-
 **Tests:** `material.TestPopupMenuButtonCallbacksMayChangeTheNavigator` (a dialog and a page from `OnSelected`, a dialog from `OnCanceled`; fails with `NavigatorLocked` before the change); `TestPopupMenuButtonSelects` unchanged.
 **Proof:** none. **Manual checks:** none.
 
+## M42: Safari (1.16.5)
+
+The owner asked on 2026-11-11 whether Glutter had been checked in Safari (it had not: the README said so) and then to test it there. Safari's WebDriver refuses until "Allow remote automation" is on in Safari's settings, which is the owner's to turn on, so the browser tests of the repository were run in the owner's own Safari 27.2 (macOS 27, Apple silicon) with two stand-ins on `PATH` (a `timeout` that runs its command, and a `chromium` that opens the page with `open -a Safari` and waits to be killed): the test apps report to the test server by themselves, so the `chromium` subtests ran in Safari. What failed and was Glutter's is fixed in the steps below; what failed because Safari will not do it for a page without a person (sound and the microphone before a real gesture, a `DeviceMotionEvent` made by script) is listed in the entry of step 42.2.
+
+### 42.1 Command+V is the browser's paste on macOS and iOS
+**Goal:** in a text field of a web app on a Mac, an iPhone or an iPad, Command+V pastes through the browser's `paste` event, with no clipboard prompt.
+**Why:** `IsNativePasteKey` left Control+V and Shift+Insert to the browser and nothing on macOS ("Command+V needs nothing": true when the framework had only its Linux bindings). Since 1.13 the framework has the macOS bindings, so Command+V was its own paste, which reads with `navigator.clipboard.readText`; Safari answers that with a "Paste" button the user must press. `TestBrowserTextInput` failed in Safari on it.
+**Read:** SPEC §23.5 ("Paste", "Who types a character"); `internal/platform/web/textkeys.go`, `input_js.go` (`onKey`), `texttest/run_js.go`.
+**Tasks:** (done in the step) `IsNativePasteKey`: Command+V and Command+Shift+V on macOS and iOS (not with Control or Option), the other systems unchanged; the test app of the browser text test sends the platform's modifier (Command on Apple systems, Control elsewhere); SPEC §23.5.
+**Tests:** ten new rows of `TestIsNativePasteKey`; `TestBrowserTextInput` passes in Safari (it failed on four checks before).
+**Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md`, 42.1 (a real Command+V in Safari and Chrome on a Mac).
+
+### 42.2 A gamepad's A button activates on macOS and iOS
+**Goal:** the A button of a pad activates the widget that its D-pad focused on every platform.
+**Why:** SPEC §28.2 says every Glutter app has focus traversal and activation with a pad, but the default shortcuts of macOS and iOS are Flutter's Apple map, which has no `GameButtonA`: on a Mac (natively and in Safari) the D-pad moved the focus and A did nothing. `TestBrowserGamepads` failed in Safari on it.
+**Read:** SPEC §28.2, §12.10 (the `WidgetsApp` row); `widgets/app.go` (`WidgetsAppDefaultShortcuts`), `internal/pads/pad.go`.
+**Tasks:** (done in the step) `GameButtonA` is an activation in the Apple map too (a deviation, SPEC §12.10); `Select` stays out of it, as in Flutter.
+**Tests:** `TestWidgetsApp` "the A button of a gamepad activates on every platform" (nine rows); `TestBrowserGamepads` passes in Safari.
+**Proof:** none. **Manual checks:** none new (a real pad on a Mac is check 37.3's).
+
