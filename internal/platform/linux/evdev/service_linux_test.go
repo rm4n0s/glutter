@@ -470,6 +470,29 @@ func TestServiceReadsTheEventsOfAPad(t *testing.T) {
 	})
 }
 
+// TestPadThatGoesDuringTheFirstLookIsLetGo removes a pad's node right after the first look at the devices: the pad must still be
+// let go (step 36.2: a service that polls listed the nodes after the first look, so a node that went in between was never
+// removed, and TestHIDPadGoesWithItsNode timed out under load).
+func TestPadThatGoesDuringTheFirstLookIsLetGo(t *testing.T) {
+	modes(t, func(t *testing.T, f *fixture) {
+		f.writeSysfs("event0", dualShock4())
+		f.writeNode("event0")
+		f.s.scanned = func() {
+			if err := os.Remove(filepath.Join(f.dev, "event0")); err != nil {
+				t.Error(err)
+			}
+		}
+		if err := f.s.Start(f.h); err != nil {
+			t.Fatal(err)
+		}
+		f.h.wait(t, "the pad", func() bool { return len(f.h.added) == 1 })
+		f.h.wait(t, "the removal", func() bool { return len(f.h.gone) == 1 })
+		if f.h.gone[0] != f.h.added[0].ID {
+			t.Errorf("removed %d, added %d", f.h.gone[0], f.h.added[0].ID)
+		}
+	})
+}
+
 func TestServiceHotplug(t *testing.T) {
 	modes(t, func(t *testing.T, f *fixture) {
 		if err := f.s.Start(f.h); err != nil {

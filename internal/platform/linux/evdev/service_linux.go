@@ -76,6 +76,8 @@ type Service struct {
 	hid     map[platform.PadID]*hidPad
 	// hidStarted, when a test sets it, is called by the goroutine of the loop after a HID driver started and before the loop goes on.
 	hidStarted func()
+	// scanned, when a test sets it, is called by the goroutine of the loop after the first look at the event devices.
+	scanned func()
 }
 
 // hidPad is a pad that a HID driver serves.
@@ -441,9 +443,14 @@ func (r *run) loop() {
 		}
 		r.close()
 	}()
-	r.scan()
+	// A service that polls lists the nodes before it looks at them: a node that goes away while the first look is made is gone
+	// from the next listing, and a node that comes is new in it. Listed after, a node that went in between was never let go.
 	if r.every > 0 {
 		r.seen = r.listing()
+	}
+	r.scan()
+	if r.s.scanned != nil {
+		r.s.scanned()
 	}
 	r.nextPoll = time.Now().Add(r.every)
 	events := make([]syscall.EpollEvent, 16)
