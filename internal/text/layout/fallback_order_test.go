@@ -115,6 +115,10 @@ func TestFallbackOrderInAParagraph(t *testing.T) {
 // has no fontconfig to put the default font first but finds the default font for a missing family.
 func TestMissingFamilyFallsBackToMonospaceOverFontscan(t *testing.T) {
 	e := systemEngine(t, "iW")
+	if files, err := e.fonts.Match(context.Background(), "monospace", 400, false, ""); err != nil || len(files) == 0 {
+		// The web has no system fonts, and the bundled font, which is not monospace, draws a family nothing has (step 41.1).
+		t.Skipf("the system has no monospace font (%v)", err)
+	}
 	lineWidth := func(s string, fallback ...string) float64 {
 		style := ui.NewTextStyle(ui.TextStyleOpts{FontFamily: "Glutter No Such Family", FontFamilyFallback: fallback, FontSize: ui.Ptr(20.0)})
 		return widthIn(e, s, style)
