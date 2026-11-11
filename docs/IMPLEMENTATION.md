@@ -58,17 +58,20 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    go vet ./...
    golangci-lint run
    go test -race ./...
+   go test -race -tags debug_mode ./...  # the tests in both modes: a plain build is a release build (SPEC §12.9)
    CGO_ENABLED=0 go build ./...
    CGO_ENABLED=0 go test ./...
    go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow   # from step 24.1 on
    GOOS=js GOARCH=wasm go build ./...    # from step 19.1 on
    GOOS=js GOARCH=wasm go vet ./...      # from step 19.1 on
    scripts/test-wasm.sh                  # from step 19.1 on
+   scripts/test-wasm.sh -tags debug_mode # and in a debug build
    scripts/check-android.sh              # from step 25.1 on: build and vet for android/arm64 and android/amd64
    GOOS=windows GOARCH=amd64 go build ./...   # from step 28.1 on
    GOOS=windows GOARCH=amd64 go vet ./...     # from step 28.1 on
    GOOS=windows GOARCH=arm64 go build ./...   # from step 28.1 on (build only: there is no arm64 Wine here)
    scripts/test-windows.sh               # from step 28.1 on: the unit tests of the packages that build for Windows, under Wine
+   scripts/test-windows.sh -tags debug_mode   # and in a debug build
    ```
    **On a Mac** (from step 33.1 on; the Mac has no Wine, no headless Wayland and no Linux display), run instead:
    ```sh
@@ -76,6 +79,7 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    go vet ./...
    golangci-lint run
    go test -race ./...
+   go test -race -tags debug_mode ./...  # the tests in both modes: a plain build is a release build (SPEC §12.9)
    CGO_ENABLED=0 go build ./...
    CGO_ENABLED=0 go test ./...
    go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow -skip-android   # drop -skip-android when ANDROID_HOME is set
@@ -84,17 +88,18 @@ This file breaks the milestones in `docs/SPEC.md` §18 into small steps. Each st
    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build ./... && GOOS=linux GOARCH=amd64 go vet ./...
    GOOS=js GOARCH=wasm go build ./... && GOOS=js GOARCH=wasm go vet ./...
    scripts/test-wasm.sh                  # needs Node
+   scripts/test-wasm.sh -tags debug_mode # and in a debug build
    GOOS=windows GOARCH=amd64 go build ./... && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=windows GOARCH=arm64 go build ./...
    GOOS=windows golangci-lint run        # amd64 and arm64, with and without --build-tags glutter_wine
    scripts/check-android.sh              # when ANDROID_HOME is set; otherwise say it was skipped
    scripts/check-ios.sh                  # from step 35.1 on
    ```
-   `scripts/test-windows.sh`, the Wine tests, the Linux display tests and the emulator tests are not run on a Mac: the step says so in `docs/IMPLEMENTED.md`, and the owner runs the full list above on the Linux machine before the milestone is published (SPEC §21). Display tests of a darwin step run on the Mac: `go test -race -tags glutter_display <packages>` (SPEC §29.13).
-   If the step lists **Simulator tests**, run them too: `go test -p 1 -tags glutter_ios <packages>` (SPEC §30.11). They boot the Simulator of `.ios-test/` themselves and shut it down.
-   If the step lists **Display tests**, run them too: `go test -race -tags glutter_display <packages>`. They run under a headless compositor (step 1.5) unless the step says otherwise.
-   If the step lists **Browser tests**, run them too: `go test -tags glutter_browser <packages>` (SPEC §17).
-   If the step lists **Device tests**, run them too: `go test -tags glutter_android <packages>` (SPEC §24.13). They start the emulator themselves and stop it; run them one package at a time (`-p 1`), since one emulator needs 2–4 GB of memory.
-   If the step lists **Wine tests**, run them too (SPEC §25.13). Tests that run inside Wine: `GOOS=windows go test -tags glutter_wine -exec "$PWD/scripts/wine-exec.sh" -p 1 <packages>`; host-side tests that start Wine themselves (`internal/winetest`, `cmd/glutter-windows`, `examples`): `go test -tags glutter_wine -p 1 <packages>`. They start Xvfb and Wine themselves and stop them (`wineserver -k`); the tests of different packages share one prefix, so run one package at a time.
+   `scripts/test-windows.sh`, the Wine tests, the Linux display tests and the emulator tests are not run on a Mac: the step says so in `docs/IMPLEMENTED.md`, and the owner runs the full list above on the Linux machine before the milestone is published (SPEC §21). Display tests of a darwin step run on the Mac: `go test -race -tags 'glutter_display debug_mode' <packages>` (SPEC §29.13).
+   If the step lists **Simulator tests**, run them too: `go test -p 1 -tags 'glutter_ios debug_mode' <packages>` (SPEC §30.11; the harness suites run as debug builds, whose hooks they drive). They boot the Simulator of `.ios-test/` themselves and shut it down.
+   If the step lists **Display tests**, run them too: `go test -race -tags 'glutter_display debug_mode' <packages>`. They run under a headless compositor (step 1.5) unless the step says otherwise.
+   If the step lists **Browser tests**, run them too: `go test -tags 'glutter_browser debug_mode' <packages>` (SPEC §17).
+   If the step lists **Device tests**, run them too: `go test -tags 'glutter_android debug_mode' <packages>` (SPEC §24.13). They start the emulator themselves and stop it; run them one package at a time (`-p 1`), since one emulator needs 2–4 GB of memory.
+   If the step lists **Wine tests**, run them too (SPEC §25.13). Tests that run inside Wine: `GOOS=windows go test -tags 'glutter_wine debug_mode' -exec "$PWD/scripts/wine-exec.sh" -p 1 <packages>`; host-side tests that start Wine themselves (`internal/winetest`, `cmd/glutter-windows`, `examples`): `go test -tags 'glutter_wine debug_mode' -p 1 <packages>`. They start Xvfb and Wine themselves and stop them (`wineserver -k`); the tests of different packages share one prefix, so run one package at a time.
 9. **Proof images.** Only when the step has a **Proof** item:
    - Produce exactly the images it lists, in `docs/implemented-proof-images/`, named `<id>-<name>.png` (e.g. `6.6-rendering-tour.png`).
    - Use the method it names (A to F, see below).
