@@ -17,7 +17,6 @@ func labelled(label string) Widget {
 }
 
 func TestSemanticsWidgetsLabels(t *testing.T) {
-	skipUnlessDebug(t)
 	tests := []struct {
 		name   string
 		w      Widget
@@ -55,18 +54,16 @@ func TestSemanticsWidgetsLabels(t *testing.T) {
 }
 
 func TestSemanticsFlagsAndContainer(t *testing.T) {
-	skipUnlessDebug(t)
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	ts.EnsureSemantics()
 	pumpLoose(ts, NewSemantics(newBox(20, 10), SemanticsOpts{Container: true, Button: foundation.Some(true), Label: foundation.Some("go")}), ui.TextDirectionLTR)
-	node := ts.RenderObject(gluttertest.BySemanticsLabel("go")).AsRenderObject().DebugSemantics()
+	node := ts.RenderObject(gluttertest.BySemanticsLabel("go")).AsRenderObject().SemanticsNode()
 	if node == nil || !node.FlagsCollection().IsButton {
 		t.Fatalf("node = %v, want a button", node)
 	}
 }
 
 func TestSemanticsUpdatesItsRenderObject(t *testing.T) {
-	skipUnlessDebug(t)
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	ts.EnsureSemantics()
 	pumpLoose(ts, labelled("one"), ui.TextDirectionLTR)

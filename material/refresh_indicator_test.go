@@ -193,7 +193,6 @@ func TestRefreshIndicatorShowFromCode(t *testing.T) {
 }
 
 func TestRefreshIndicatorSemanticsLabel(t *testing.T) {
-	skipUnlessDebug(t)
 	a := &refreshApp{pending: make(chan struct{})}
 	ts := pumpRefresh(t, a)
 	handle := ts.EnsureSemantics()

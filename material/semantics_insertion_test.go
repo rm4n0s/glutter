@@ -14,7 +14,6 @@ import (
 // geometry of a new child that the flush did not reach is computed when the node
 // of its parent is built (SPEC §12.10, "Semantics of new children").
 func TestSemanticsOfAWidgetInsertedUnderTheApp(t *testing.T) {
-	skipUnlessDebug(t) // the semantics finders need a debug build
 	ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 800, Height: 600}})
 	show := false
 	var rebuild func()

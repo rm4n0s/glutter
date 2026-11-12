@@ -162,7 +162,6 @@ func TestLinearProgressIndicatorIndeterminateAnimates(t *testing.T) {
 }
 
 func TestLinearProgressIndicatorSemantics(t *testing.T) {
-	skipUnlessDebug(t)
 	tests := []struct {
 		name string
 		opts LinearProgressIndicatorOpts

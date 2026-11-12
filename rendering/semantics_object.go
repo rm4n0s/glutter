@@ -127,11 +127,29 @@ func (b *RenderObjectBase) DebugNeedsSemanticsUpdate() bool {
 }
 
 // DebugSemantics is the semantics node of the object, if it formed one (debug
-// builds only).
+// builds only; SemanticsNode has it in every build).
 //
 // Flutter: rendering/object.dart RenderObject.debugSemantics
 func (b *RenderObjectBase) DebugSemantics() *semantics.SemanticsNode {
-	if foundation.DebugMode && b.semantics().built {
+	if !foundation.DebugMode {
+		return nil
+	}
+	return b.SemanticsNode()
+}
+
+// SemanticsNode is the semantics node of the object, if it formed one, in
+// every build mode: the node that the SemanticsOwner holds and sends to the
+// platform. It is nil while semantics are off and for an object whose
+// semantics went into the node of an ancestor. The semantics finders of
+// gluttertest read it, so they find the same nodes in a release build as in a
+// debug build.
+//
+// Deviation: Flutter has only debugSemantics, which is null in a release
+// build; Flutter's tests always run in debug mode (SPEC §12.10).
+//
+// Flutter: no counterpart
+func (b *RenderObjectBase) SemanticsNode() *semantics.SemanticsNode {
+	if b.semantics().built {
 		return b.semantics().cachedSemanticsNode
 	}
 	return nil

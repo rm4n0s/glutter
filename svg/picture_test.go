@@ -4,7 +4,6 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/painting"
 	"github.com/rm4n0s/glutter/ui"
@@ -337,9 +336,6 @@ func TestSvgPictureSemantics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if !foundation.DebugMode {
-				t.Skip("the semantics finders read the debug semantics")
-			}
 			ts := newTester(t)
 			ts.EnsureSemantics()
 			pumpTopLeft(ts, NewSvgPictureString(tt.src, tt.opts))

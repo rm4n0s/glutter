@@ -196,7 +196,6 @@ func TestGolden(t *testing.T) {
 }
 
 func TestSemanticsLabelFinders(t *testing.T) {
-	skipUnlessDebug(t)
 	ts := New(t)
 	ts.EnsureSemantics()
 	a := newSwatch(ui.NewColor(0xFF000000), 10, 10)

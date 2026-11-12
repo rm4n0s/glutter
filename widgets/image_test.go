@@ -131,7 +131,6 @@ func TestImageGaplessPlayback(t *testing.T) {
 }
 
 func TestImageSemantics(t *testing.T) {
-	skipUnlessDebug(t)
 	tests := []struct {
 		name    string
 		opts    ImageOpts

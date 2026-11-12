@@ -143,7 +143,6 @@ func TestDefaultTextHeightBehavior(t *testing.T) {
 }
 
 func TestTextSemantics(t *testing.T) {
-	skipUnlessDebug(t)
 	tests := []struct {
 		name  string
 		w     Widget

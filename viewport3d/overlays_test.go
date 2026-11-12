@@ -203,7 +203,6 @@ func TestTheViewCubeHighlightsWhatIsUnderThePointer(t *testing.T) {
 func same(a, b *image.RGBA) bool { return bytes.Equal(a.Pix, b.Pix) }
 
 func TestTheFacesOfTheViewCubeAreInTheSemanticsTree(t *testing.T) {
-	skipUnlessDebug(t)
 	ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 200, Height: 200}})
 	ts.EnsureSemantics()
 	cam := viewport3d.NewCamera()
@@ -211,7 +210,7 @@ func TestTheFacesOfTheViewCubeAreInTheSemanticsTree(t *testing.T) {
 	ts.PumpWidget(NewDirectionality(ui.TextDirectionLTR, NewCenter(viewport3d.NewViewCube(cam, viewport3d.ViewCubeOpts{
 		Labels: [6]string{3: "LINKS"}}))))
 	paint := ts.RenderObject(gluttertest.ByType[*CustomPaint]())
-	node := paint.AsRenderObject().DebugSemantics()
+	node := paint.AsRenderObject().SemanticsNode()
 	if node == nil {
 		t.Fatal("the cube has no semantics node")
 	}
@@ -243,7 +242,6 @@ func TestTheFacesOfTheViewCubeAreInTheSemanticsTree(t *testing.T) {
 }
 
 func TestTheAxesAreLabelled(t *testing.T) {
-	skipUnlessDebug(t)
 	ts := gluttertest.New(t, gluttertest.Opts{Size: ui.Size{Width: 200, Height: 200}})
 	ts.EnsureSemantics()
 	ts.PumpWidget(NewDirectionality(ui.TextDirectionLTR, NewCenter(viewport3d.NewAxes(viewport3d.NewCamera(), viewport3d.AxesOpts{SemanticsLabel: "World axes"}))))

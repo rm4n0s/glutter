@@ -201,6 +201,7 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 ```
 
 **What is new in 1.17.** Release builds by default, and the Linux run of 1.13 to 1.16.
+- **Fixed** (1.17.1): `gluttertest.BySemanticsLabel` and `BySemanticsLabelMatching` find the same elements in a release build (a test run without tags) as in a debug build; they found nothing there, so a test that looked for a label failed and one that checked that a label was gone passed without looking. `RenderObjectBase.SemanticsNode` is the node of a render object in every build mode (`DebugSemantics` stays debug-only, as in Flutter).
 - **A plain `go build`, `go run` or `go install` is a release build** (`foundation.ReleaseMode`): no asserts, no diagnostics, no `GLUTTER_DEV_*` hooks. `-tags debug_mode` makes a debug build, and the tag `glutter_release` is gone (a build that still passes it is a release build, as before). The tools build release builds unless given `-debug`, which replaces `-release`; their `shot` builds a debug build. `glutter-android` signs a store APK, not debuggable, when given `-key` and `-cert`, and otherwise the debug key, debuggable, as before.
 - **Fixed on Linux**, found by running there what was built on a Mac: a HID pad (PlayStation, Switch Pro, a Bluetooth Xbox pad) that was asked to rumble at once after it was added was not found; a pad unplugged during the first look at `/dev/input`, when inotify is not there, was kept; and `glutter-windows shot -screen` captured the screen before Wine had drawn the window.
 

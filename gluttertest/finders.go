@@ -258,8 +258,11 @@ func ByTooltip(message string, opts ...FindOpts) Finder {
 
 // BySemanticsLabel finds the elements whose render object has a semantics node
 // with exactly this label. Ask for semantics with Tester.EnsureSemantics and
-// pump a frame first. It reads RenderObject.DebugSemantics, so it finds nothing
-// in a release or profile build (Flutter's tests run in debug mode).
+// pump a frame first. It reads RenderObjectBase.SemanticsNode, so it finds the
+// same nodes in every build mode, a release build included.
+//
+// Deviation: Flutter reads RenderObject.debugSemantics, which is null in a
+// release build; Flutter's tests always run in debug mode (SPEC §12.10).
 //
 // Flutter: flutter_test/lib/src/finders.dart CommonFinders.bySemanticsLabel
 func BySemanticsLabel(label string, opts ...FindOpts) Finder {
@@ -287,7 +290,7 @@ func bySemantics(desc string, matches func(label string) bool, opts []FindOpts) 
 			if ro == nil {
 				return false
 			}
-			node := ro.AsRenderObject().DebugSemantics()
+			node := ro.AsRenderObject().SemanticsNode()
 			return node != nil && matches(node.Label())
 		},
 		includeOffstage: includeOffstage(opts),

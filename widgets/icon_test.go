@@ -210,7 +210,6 @@ func TestIconMirrorsInRightToLeft(t *testing.T) {
 }
 
 func TestIconSemanticLabel(t *testing.T) {
-	skipUnlessDebug(t)
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	ts.EnsureSemantics()
 	pumpLoose(ts, NewIcon(testIcon, IconOpts{SemanticLabel: foundation.Some("add")}), ui.TextDirectionLTR)

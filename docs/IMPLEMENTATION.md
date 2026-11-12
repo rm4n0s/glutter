@@ -4827,3 +4827,15 @@ The owner asked on 2026-11-11 whether Glutter had been checked in Safari (it had
 **Tests:** `TestWidgetsApp` "the A button of a gamepad activates on every platform" (nine rows); `TestBrowserGamepads` passes in Safari.
 **Proof:** none. **Manual checks:** none new (a real pad on a Mac is check 37.3's).
 
+## M43: Fixes found by Emetos (1.17.1)
+
+The owner passed on an entry of Emetos's list of Glutter issues on 2026-11-12, found when Emetos moved to 1.17.0.
+
+### 43.1 The semantics finders find in a release build
+**Goal:** `gluttertest.BySemanticsLabel` and `BySemanticsLabelMatching` find the same elements in a release build (a test run without tags) as in a debug build.
+**Why:** they read `RenderObject.DebugSemantics`, which is nil in a release build, so since 1.17 (a plain `go test` is a release build) a test that looks for a label failed and one that checks that a label is gone passed without looking. Emetos skipped its tests of the window buttons in a release build. Flutter's finder reads `debugSemantics` too, but Flutter's tests always run in debug mode.
+**Read:** SPEC §12.9, §12.10; `gluttertest/finders.go` (`bySemantics`), `rendering/semantics_object.go` (`DebugSemantics`, `cachedSemanticsNode`).
+**Tasks:** (done in the step) `RenderObjectBase.SemanticsNode`, the node that the object formed, in every build mode (the node that the `SemanticsOwner` holds and sends to the platform); `DebugSemantics` is it in a debug build and nil in the others, as before; the finders read it; the tests that skipped in a release build only because of the finders run in both modes; SPEC §12.10.
+**Tests:** `rendering.TestSemanticsNodeInEveryBuildMode`; `gluttertest.TestSemanticsLabelFinders` and the tests of `widgets`, `material`, `cupertino`, `svg`, `viewport3d` and `rendering` that use the finders or the node, now in both modes.
+**Proof:** none. **Manual checks:** none.
+

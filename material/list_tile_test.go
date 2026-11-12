@@ -279,7 +279,6 @@ func TestListTileDivideTiles(t *testing.T) {
 }
 
 func TestListTileSemantics(t *testing.T) {
-	skipUnlessDebug(t) // the semantics finders need a debug build
 	ts := pumpTile(t, standardTheme(true), widgets.NewSizedBox(
 		NewListTile(ListTileOpts{Title: widgets.NewText("Tappable"), OnTap: func() {}}), widgets.SizedBoxOpts{Width: foundation.Some(300.0)}))
 	handle := ts.EnsureSemantics()

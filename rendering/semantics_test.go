@@ -184,7 +184,7 @@ func TestSemanticsSizeUpdatesWhenLayoutSizeChanges(t *testing.T) {
 	if child.Size() != (ui.Size{Width: 100, Height: 100}) {
 		t.Fatalf("size = %v", child.Size())
 	}
-	if got, want := debugRect(t, child), ui.NewRectFromLTWH(0, 0, 100, 100); got != want {
+	if got, want := nodeRect(t, child), ui.NewRectFromLTWH(0, 0, 100, 100); got != want {
 		t.Errorf("rect = %v, want %v", got, want)
 	}
 	child.targetSize = ui.Size{Width: 200, Height: 200}
@@ -193,7 +193,7 @@ func TestSemanticsSizeUpdatesWhenLayoutSizeChanges(t *testing.T) {
 	if child.Size() != (ui.Size{Width: 200, Height: 200}) {
 		t.Fatalf("size = %v", child.Size())
 	}
-	if got, want := debugRect(t, child), ui.NewRectFromLTWH(0, 0, 200, 200); got != want {
+	if got, want := nodeRect(t, child), ui.NewRectFromLTWH(0, 0, 200, 200); got != want {
 		t.Errorf("rect = %v, want %v", got, want)
 	}
 }
@@ -207,7 +207,7 @@ func TestSemanticsBlockSemanticsCornerCase(t *testing.T) {
 	parent := newSemMulti(middle2)
 	parent.explicit = true
 	layout(t, h, parent, atPhase(layoutOpts{}, phaseComposite))
-	if got, want := debugRect(t, child), ui.NewRectFromLTWH(0, 0, 100, 100); got != want {
+	if got, want := nodeRect(t, child), ui.NewRectFromLTWH(0, 0, 100, 100); got != want {
 		t.Errorf("rect = %v, want %v", got, want)
 	}
 	middle1.MarkNeedsLayout()
@@ -231,7 +231,7 @@ func TestSemanticsSizeUpdatesToZeroSize(t *testing.T) {
 	parent := newSemNode(child)
 	parent.boundary = true
 	layout(t, h, parent, atPhase(layoutOpts{}, phaseComposite))
-	if got, want := debugRect(t, child), ui.NewRectFromLTWH(0, 0, 100, 100); got != want {
+	if got, want := nodeRect(t, child), ui.NewRectFromLTWH(0, 0, 100, 100); got != want {
 		t.Errorf("rect = %v, want %v", got, want)
 	}
 	child.targetSize = ui.Size{}
@@ -247,7 +247,7 @@ func TestSemanticsUpdatesWhenChildChangesInLastChildParent(t *testing.T) {
 	parent := newSemMulti(originalChild)
 	parent.lastChildOnly, parent.explicit = true, true
 	layout(t, h, parent, atPhase(layoutOpts{}, phaseComposite))
-	parentSemantics := parent.DebugSemantics()
+	parentSemantics := parent.SemanticsNode()
 	if got := parentSemantics.ChildrenCount(); got != 1 {
 		t.Fatalf("initial children = %d, want 1", got)
 	}
@@ -278,7 +278,7 @@ func TestSkipUpdateForInvisibleChildDroppedFromTree(t *testing.T) {
 	grandParent := newSemMulti(parent)
 	grandParent.lastChildOnly, grandParent.explicit = true, true
 	layout(t, h, grandParent, atPhase(layoutOpts{}, phaseComposite))
-	if got := grandParent.DebugSemantics().ChildrenCount(); got != 1 {
+	if got := grandParent.SemanticsNode().ChildrenCount(); got != 1 {
 		t.Fatalf("children = %d, want 1", got)
 	}
 	parent.MarkNeedsLayout()
@@ -305,7 +305,7 @@ func TestMarkNeedsSemanticsUpdateAsksAllObjectsBetweenBoundaries(t *testing.T) {
 	root.tap, root.boundary = true, true
 	layout(t, h, root, atPhase(layoutOpts{}, phaseComposite))
 
-	actions := func() ui.SemanticsAction { return root.DebugSemantics().GetSemanticsData().Actions }
+	actions := func() ui.SemanticsAction { return root.SemanticsNode().GetSemanticsData().Actions }
 	want := ui.SemanticsActionTap | ui.SemanticsActionLongPress | ui.SemanticsActionScrollLeft | ui.SemanticsActionScrollRight
 	if got := actions(); got != want {
 		t.Errorf("actions = %v, want %v", got, want)
@@ -332,16 +332,67 @@ func TestMarkedRelayoutBoundaryBoundaryIsAssembledAgain(t *testing.T) {
 	root := newSemNode(middle)
 	root.tap, root.boundary = true, true
 	layout(t, h, root, atPhase(layoutOpts{}, phaseComposite))
-	if got := inner.DebugSemantics().Label(); got != "first" {
+	if got := inner.SemanticsNode().Label(); got != "first" {
 		t.Fatalf("label = %q, want first", got)
 	}
 	for _, label := range []string{"second", "third"} {
 		inner.label = label
 		inner.MarkNeedsSemanticsUpdate()
 		h.Pump()
-		if got := inner.DebugSemantics().Label(); got != label {
+		if got := inner.SemanticsNode().Label(); got != label {
 			t.Errorf("label after the change = %q, want %q", got, label)
 		}
+	}
+}
+
+// SemanticsNode has the node in every build mode, and DebugSemantics the same node in a debug build and nil in the
+// others; before semantics are on, and for an object that formed no node, both are nil.
+func TestSemanticsNodeInEveryBuildMode(t *testing.T) {
+	h := newHarness(t)
+	inner := newSemNode(nil)
+	inner.boundary, inner.label = true, "inner"
+	plain := newSemNode(inner)
+	root := newSemNode(plain)
+	root.tap, root.boundary = true, true
+	layout(t, h, root, atPhase(layoutOpts{}, phaseComposite))
+	if inner.SemanticsNode() != nil || inner.DebugSemantics() != nil {
+		t.Fatal("a node before semantics are on")
+	}
+	handle := h.Binding.SemanticsBinding().EnsureSemantics()
+	t.Cleanup(handle.Dispose)
+	h.Pump()
+	tests := []struct {
+		name   string
+		object rendering.RenderObject
+		label  string
+	}{
+		{"a boundary", inner, "inner"},
+		{"the root", root, ""},
+		{"an object that formed no node", plain, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := tt.object.AsRenderObject().SemanticsNode()
+			if tt.object == plain {
+				if node != nil {
+					t.Fatalf("node = %v, want none", node)
+				}
+				return
+			}
+			if node == nil {
+				t.Fatal("no node")
+			}
+			if node.Label() != tt.label {
+				t.Errorf("label = %q, want %q", node.Label(), tt.label)
+			}
+			want := node
+			if !foundation.DebugMode {
+				want = nil
+			}
+			if got := tt.object.AsRenderObject().DebugSemantics(); got != want {
+				t.Errorf("DebugSemantics = %v, want %v (debug mode %v)", got, want, foundation.DebugMode)
+			}
+		})
 	}
 }
 
@@ -353,14 +404,14 @@ func TestMergeSemanticsMergesDescendants(t *testing.T) {
 	column.explicit = false
 	merge := rendering.NewRenderMergeSemantics(column)
 	layout(t, h, merge, atPhase(layoutOpts{}, phaseComposite))
-	node := merge.DebugSemantics()
+	node := merge.SemanticsNode()
 	if node == nil {
 		t.Fatal("the merging object has no node")
 	}
 	if got := node.GetSemanticsData().Label(); got == "" {
 		t.Error("the merged label is empty")
 	}
-	if a.DebugSemantics() != nil && a.DebugSemantics() != node && !a.DebugSemantics().IsMergedIntoParent() {
+	if a.SemanticsNode() != nil && a.SemanticsNode() != node && !a.SemanticsNode().IsMergedIntoParent() {
 		t.Error("the child node is not merged into the parent")
 	}
 }
@@ -372,13 +423,13 @@ func TestExcludeAndBlockSemantics(t *testing.T) {
 	stack := newSemMulti(under, rendering.NewRenderBlockSemantics(over))
 	stack.explicit = true
 	layout(t, h, stack, atPhase(layoutOpts{}, phaseComposite))
-	if under.DebugSemantics() != nil && under.DebugSemantics().Parent() != nil {
+	if under.SemanticsNode() != nil && under.SemanticsNode().Parent() != nil {
 		t.Error("the blocked object still has a node in the tree")
 	}
-	if over.DebugSemantics() == nil {
+	if over.SemanticsNode() == nil {
 		t.Error("the blocking object has no node")
 	}
-	if got := stack.DebugSemantics().ChildrenCount(); got != 1 {
+	if got := stack.SemanticsNode().ChildrenCount(); got != 1 {
 		t.Errorf("children = %d, want 1", got)
 	}
 
@@ -386,7 +437,7 @@ func TestExcludeAndBlockSemantics(t *testing.T) {
 	root := newSemMulti(exclude)
 	root.explicit = true
 	layout(t, h, root, atPhase(layoutOpts{}, phaseComposite))
-	if got := root.DebugSemantics().ChildrenCount(); got != 0 {
+	if got := root.SemanticsNode().ChildrenCount(); got != 0 {
 		t.Errorf("children of the excluded subtree = %d, want 0", got)
 	}
 }
@@ -396,7 +447,7 @@ func TestIndexedSemanticsSetsIndexInParent(t *testing.T) {
 	inner := annotated(newSemNode(nil), "item", true)
 	indexed := rendering.NewRenderIndexedSemantics(3, inner)
 	layout(t, h, indexed, atPhase(layoutOpts{}, phaseComposite))
-	node := indexed.DebugSemantics()
+	node := indexed.SemanticsNode()
 	if node == nil {
 		t.Fatal("no node")
 	}
@@ -414,7 +465,7 @@ func TestSemanticsAnnotationsPropertiesReachTheNode(t *testing.T) {
 	})
 	box := rendering.NewRenderSemanticsAnnotations(props, newSemNode(nil), rendering.SemanticsAnnotationsOpts{Container: true, TextDirection: ui.TextDirectionLTR})
 	layout(t, h, box, atPhase(layoutOpts{}, phaseComposite))
-	node := box.DebugSemantics()
+	node := box.SemanticsNode()
 	data := node.GetSemanticsData()
 	if data.Label() != "Press" || !data.FlagsCollection.IsButton || !data.HasAction(ui.SemanticsActionTap) {
 		t.Errorf("data = %s", data)
@@ -447,7 +498,7 @@ func TestSemanticsGestureHandlerPerformsScrolls(t *testing.T) {
 		OnVerticalDragUpdate:   func(d gestures.DragUpdateDetails) { deltas = append(deltas, d.Delta) },
 	})
 	layout(t, h, handler, atPhase(layoutOpts{}, phaseComposite))
-	node := handler.DebugSemantics()
+	node := handler.SemanticsNode()
 	if node == nil {
 		t.Fatal("no node")
 	}
@@ -470,7 +521,7 @@ func TestSemanticsGestureHandlerPerformsScrolls(t *testing.T) {
 	// validActions filters the actions.
 	handler.SetValidActions(map[ui.SemanticsAction]struct{}{ui.SemanticsActionScrollLeft: {}})
 	h.Pump()
-	data := handler.DebugSemantics().GetSemanticsData()
+	data := handler.SemanticsNode().GetSemanticsData()
 	if data.HasAction(ui.SemanticsActionTap) || !data.HasAction(ui.SemanticsActionScrollLeft) || data.HasAction(ui.SemanticsActionScrollRight) {
 		t.Errorf("actions = %v", data.Actions)
 	}
@@ -486,7 +537,7 @@ func TestIgnoreAndAbsorbPointerBlockUserActions(t *testing.T) {
 			inner := newSemNode(nil)
 			inner.boundary, inner.tap, inner.label = true, true, "inner"
 			layout(t, h, wrap(inner), atPhase(layoutOpts{}, phaseComposite))
-			node := inner.DebugSemantics()
+			node := inner.SemanticsNode()
 			if node == nil {
 				t.Fatal("no node")
 			}
@@ -564,7 +615,7 @@ func TestCustomPaintSemantics(t *testing.T) {
 	painter := &painterWithSemantics{CustomPainterBase: rendering.NewCustomPainterBase(nil), build: items(keyA, keyB)}
 	box := rendering.NewRenderCustomPaint(nil, rendering.RenderCustomPaintOpts{Painter: painter, PreferredSize: ui.Size{Width: 50, Height: 50}})
 	layout(t, h, box, atPhase(layoutOpts{}, phaseComposite))
-	node := box.DebugSemantics()
+	node := box.SemanticsNode()
 	if node == nil || node.ChildrenCount() != 2 {
 		t.Fatalf("node = %v", node)
 	}
@@ -575,7 +626,7 @@ func TestCustomPaintSemantics(t *testing.T) {
 	box.SetPainter(&painterWithSemantics{CustomPainterBase: rendering.NewCustomPainterBase(nil), build: items(keyB, keyA)})
 	h.Pump()
 	var after []int
-	box.DebugSemantics().VisitChildren(func(c *semantics.SemanticsNode) bool { after = append(after, c.ID()); return true })
+	box.SemanticsNode().VisitChildren(func(c *semantics.SemanticsNode) bool { after = append(after, c.ID()); return true })
 	if len(after) != 2 || (after[0] != ids[0] || after[1] != ids[1]) && (after[0] != ids[1] || after[1] != ids[0]) {
 		t.Errorf("node IDs %v changed to %v", ids, after)
 	}
@@ -589,7 +640,7 @@ func TestTableSemantics(t *testing.T) {
 	table := rendering.NewRenderTable(ui.TextDirectionLTR)
 	table.SetFlatChildren(2, []rendering.Box{cell("a"), cell("b"), cell("c"), cell("d")})
 	layout(t, h, table, atPhase(layoutOpts{}, phaseComposite))
-	node := table.DebugSemantics()
+	node := table.SemanticsNode()
 	if node == nil {
 		t.Fatal("the table has no node")
 	}
@@ -625,7 +676,7 @@ func TestParagraphSemanticsLabel(t *testing.T) {
 	})
 	p := rendering.NewRenderParagraph(span, ui.TextDirectionLTR, rendering.RenderParagraphOpts{TextEngine: h.TextEngine})
 	layout(t, h, p, atPhase(layoutOpts{}, phaseComposite))
-	node := p.DebugSemantics()
+	node := p.SemanticsNode()
 	if node == nil {
 		t.Fatal("the paragraph has no node")
 	}
@@ -650,7 +701,7 @@ func TestParagraphSemanticsOfRecognizerSpans(t *testing.T) {
 	})
 	p := rendering.NewRenderParagraph(span, ui.TextDirectionLTR, rendering.RenderParagraphOpts{TextEngine: h.TextEngine})
 	layout(t, h, p, atPhase(layoutOpts{}, phaseComposite))
-	node := p.DebugSemantics()
+	node := p.SemanticsNode()
 	if node == nil || node.ChildrenCount() != 2 {
 		t.Fatalf("node = %v", node)
 	}
@@ -674,7 +725,7 @@ func TestGetRectOfSemanticsNodeInViewCoordinates(t *testing.T) {
 	h, _ := withSemantics(t)
 	box := annotated(newSemNode(nil), "x", true)
 	layout(t, h, box, atPhase(layoutOpts{}, phaseComposite))
-	node := box.DebugSemantics()
+	node := box.SemanticsNode()
 	r, ok := h.Binding.GetRectOfSemanticsNodeInViewCoordinates(h.View.ViewID(), node.ID())
 	if !ok || r != ui.NewRectFromLTWH(0, 0, 800, 600) {
 		t.Errorf("rect = %v, %v", r, ok)

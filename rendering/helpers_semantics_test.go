@@ -170,7 +170,6 @@ func (m *semMulti) VisitChildrenForSemantics(visitor rendering.RenderObjectVisit
 // withSemantics makes the harness produce semantics for the test.
 func withSemantics(t *testing.T) (*renderingtest.Harness, *semantics.SemanticsOwner) {
 	t.Helper()
-	skipUnlessDebug(t) // DebugSemantics exists in debug builds only
 	h := newHarness(t)
 	handle := h.Binding.SemanticsBinding().EnsureSemantics()
 	t.Cleanup(handle.Dispose)
@@ -183,9 +182,9 @@ func countSemanticsChildren(object rendering.RenderObject) int {
 	return count
 }
 
-func debugRect(t *testing.T, o rendering.RenderObject) ui.Rect {
+func nodeRect(t *testing.T, o rendering.RenderObject) ui.Rect {
 	t.Helper()
-	node := o.AsRenderObject().DebugSemantics()
+	node := o.AsRenderObject().SemanticsNode()
 	if node == nil {
 		t.Fatalf("%T has no semantics node", o)
 	}
