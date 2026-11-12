@@ -254,10 +254,3 @@ func requireTagged(t *testing.T, err error) *errors.Error {
 	}
 	return appErr
 }
-
-func skipUnlessDebug(t *testing.T) {
-	t.Helper()
-	if !foundation.DebugMode {
-		t.Skip("needs the debug-only semantics nodes of the render objects")
-	}
-}
