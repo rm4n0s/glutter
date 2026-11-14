@@ -61,6 +61,31 @@ func (c clip) intersect(shape *Mask) clip {
 	return c.made(b, cov, st)
 }
 
+// intersectRect returns the clip narrowed to a rectangle of whole pixels: what intersect
+// gives for a shape that covers every pixel of r fully, without the mask of the shape.
+func (c clip) intersectRect(r image.Rectangle) clip {
+	b := c.bounds.Intersect(r)
+	if b.Empty() {
+		return clip{}
+	}
+	if c.mask == nil {
+		return clip{bounds: b}
+	}
+	if b == c.bounds {
+		return c
+	}
+	// The part of the mask inside the rectangle, as a mask of its own: a clip's mask
+	// covers its bounds exactly.
+	cov := make([]float32, b.Dx()*b.Dy())
+	st := coverState{full: true}
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		out := cov[(y-b.Min.Y)*b.Dx() : (y-b.Min.Y+1)*b.Dx()]
+		copy(out, c.mask.Cov[(y-c.bounds.Min.Y)*c.bounds.Dx()+(b.Min.X-c.bounds.Min.X):])
+		st.add(out)
+	}
+	return c.made(b, cov, st)
+}
+
 // subtract returns the clip with the shape cut out of it. A nil shape cuts
 // nothing.
 func (c clip) subtract(shape *Mask) clip {

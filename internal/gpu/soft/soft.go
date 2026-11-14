@@ -135,7 +135,11 @@ func (r *renderer) picture(p *ui.Picture, st *state) error {
 		case ui.OpTransform:
 			st.m.MultiplyBy(&v.Matrix)
 		case ui.OpClipRect:
-			r.clipShape(st, rectPath(v.Rect), v.AntiAlias, v.Op == ui.ClipOpDifference)
+			if v.Op == ui.ClipOpDifference {
+				r.clipShape(st, rectPath(v.Rect), v.AntiAlias, true)
+			} else {
+				st.clip = rectClip(st, v.Rect, v.AntiAlias)
+			}
 		case ui.OpClipRRect:
 			r.clipShape(st, rrectPath(v.RRect), v.AntiAlias, false)
 		case ui.OpClipRSuperellipse:
@@ -251,7 +255,7 @@ func (r *renderer) drawOp(op ui.DisplayOp, st *state) error {
 	case ui.OpDrawPath:
 		return r.drawPath(v.Path, &v.Paint, st, false)
 	case ui.OpDrawRect:
-		return r.drawPath(rectPath(v.Rect), &v.Paint, st, false)
+		return r.drawRect(v.Rect, &v.Paint, st)
 	case ui.OpDrawRRect:
 		return r.drawPath(rrectPath(v.RRect), &v.Paint, st, false)
 	case ui.OpDrawRSuperellipse:
@@ -416,6 +420,61 @@ func shapeClip(st *state, path *ui.Path, antiAlias, subtract bool) clip {
 		return st.clip.subtract(mask)
 	}
 	return st.clip.intersect(mask)
+}
+
+// pixelRect returns the pixels that the rectangle covers under the transform, when every
+// edge of it lies between two pixels: the transform only scales along the axes and
+// translates, and the corners land on whole numbers. Such a rectangle covers each pixel
+// fully or not at all, with or without anti-aliasing, so its coverage is the rectangle of
+// pixels and needs no mask. ok is false for every other rectangle and transform, and for
+// corners that are not finite or lie past what the rasterizer works with.
+func pixelRect(m *ui.Matrix4, r ui.Rect) (px image.Rectangle, ok bool) {
+	s := m.Storage()
+	if s[1] != 0 || s[4] != 0 || s[3] != 0 || s[7] != 0 || s[15] != 1 {
+		return image.Rectangle{}, false
+	}
+	// The corners as the rasterizer gets them from the flattened path.
+	a := m.TransformPoint(ui.Offset{Dx: r.Left, Dy: r.Top})
+	b := m.TransformPoint(ui.Offset{Dx: r.Right, Dy: r.Bottom})
+	for _, v := range [4]float64{a.Dx, a.Dy, b.Dx, b.Dy} {
+		// A NaN is not equal to itself, and an infinity is past maxCoord.
+		if v != math.Trunc(v) || math.Abs(v) > maxCoord {
+			return image.Rectangle{}, false
+		}
+	}
+	return image.Rect(int(a.Dx), int(a.Dy), int(b.Dx), int(b.Dy)), true
+}
+
+// rectClip returns the clip of the state narrowed to the rectangle, in the coordinates of
+// the state. A rectangle on whole pixels narrows the bounds of the clip and makes no mask
+// (a widget tree clips with such rectangles everywhere: each viewport, each ClipRect); any
+// other is rasterized like every shape.
+func rectClip(st *state, r ui.Rect, antiAlias bool) clip {
+	if px, ok := pixelRect(st.m, r); ok {
+		return st.clip.intersectRect(px)
+	}
+	return shapeClip(st, rectPath(r), antiAlias, false)
+}
+
+// drawRect fills or strokes a rectangle with the paint, under the state. The fill of a
+// rectangle on whole pixels covers each pixel of it fully, so it is painted without
+// rasterizing it into a mask; the pixels are those the mask gives.
+func (r *renderer) drawRect(rect ui.Rect, p *ui.Paint, st *state) error {
+	if p.Style() != ui.PaintingStyleFill || p.MaskFilter() != nil {
+		return r.drawPath(rectPath(rect), p, st, false)
+	}
+	px, ok := pixelRect(st.m, rect)
+	if !ok {
+		return r.drawPath(rectPath(rect), p, st, false)
+	}
+	ps, err := r.setup(p, affineOf(st.m))
+	if err != nil {
+		return err
+	}
+	if b := st.clip.limit(px.Intersect(r.img.Rect)); !b.Empty() {
+		r.composite(&Mask{Rect: b}, st.clip, ps)
+	}
+	return nil
 }
 
 // fillRuleOf returns the rule that fills the path.

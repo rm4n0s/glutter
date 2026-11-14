@@ -75,13 +75,15 @@ func (r *renderer) layer(l ui.Layer, st *state) error {
 		inner.m.Translate(float32(v.Offset.Dx), float32(v.Offset.Dy), 0)
 		return r.picture(v.Picture, inner)
 	case *ui.ClipRectLayer:
-		return r.clipLayer(l, st, rectPath(v.Rect), v.ClipBehavior)
+		return r.clipLayer(l, st, v.ClipBehavior, func(antiAlias bool) clip { return rectClip(st, v.Rect, antiAlias) })
 	case *ui.ClipRRectLayer:
-		return r.clipLayer(l, st, rrectPath(v.RRect), v.ClipBehavior)
+		return r.clipLayer(l, st, v.ClipBehavior, func(antiAlias bool) clip { return shapeClip(st, rrectPath(v.RRect), antiAlias, false) })
 	case *ui.ClipRSuperellipseLayer:
-		return r.clipLayer(l, st, rsuperellipsePath(v.RSuperellipse), v.ClipBehavior)
+		return r.clipLayer(l, st, v.ClipBehavior, func(antiAlias bool) clip {
+			return shapeClip(st, rsuperellipsePath(v.RSuperellipse), antiAlias, false)
+		})
 	case *ui.ClipPathLayer:
-		return r.clipLayer(l, st, v.Path, v.ClipBehavior)
+		return r.clipLayer(l, st, v.ClipBehavior, func(antiAlias bool) clip { return shapeClip(st, v.Path, antiAlias, false) })
 	case *ui.OpacityLayer:
 		inner := st.clone()
 		inner.m.Translate(float32(v.Offset.Dx), float32(v.Offset.Dy), 0)
@@ -126,24 +128,25 @@ func (r *renderer) groupLayer(l ui.Layer, outer, inner *state, c compositeParams
 	return err
 }
 
-// clipLayer draws the children of l clipped to the shape. With the behavior
+// clipLayer draws the children of l clipped to a shape; narrowed returns the clip of
+// st narrowed to the shape, with anti-aliasing or without. With the behavior
 // ClipNone nothing is clipped; with ClipAntiAliasWithSaveLayer the children are
 // drawn into a layer, and the clip is applied to the layer as a whole, so that
 // the edge of the clip does not show the background through anti-aliasing.
-func (r *renderer) clipLayer(l ui.Layer, st *state, shape *ui.Path, behavior ui.Clip) error {
+func (r *renderer) clipLayer(l ui.Layer, st *state, behavior ui.Clip, narrowed func(antiAlias bool) clip) error {
 	switch behavior {
 	case ui.ClipNone:
 		return r.children(l, st)
 	case ui.ClipAntiAliasWithSaveLayer:
-		clipped := &state{m: st.m, clip: shapeClip(st, shape, true, false)}
+		clipped := narrowed(true)
 		rec := r.beginLayer(st.clip.bounds)
 		err := r.children(l, st)
-		if ferr := r.endLayer(rec, clipped.clip, compositeParams{alpha: 1, mode: ui.BlendModeSrcOver}); err == nil {
+		if ferr := r.endLayer(rec, clipped, compositeParams{alpha: 1, mode: ui.BlendModeSrcOver}); err == nil {
 			err = ferr
 		}
 		return err
 	}
-	inner := &state{m: st.m, clip: shapeClip(st, shape, behavior != ui.ClipHardEdge, false)}
+	inner := &state{m: st.m, clip: narrowed(behavior != ui.ClipHardEdge)}
 	return r.children(l, inner)
 }
 
