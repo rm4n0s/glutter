@@ -3,6 +3,7 @@ package layout
 import (
 	"testing"
 
+	"github.com/rm4n0s/glutter/internal/gpu/opsig"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -421,5 +422,67 @@ func TestPaintBoundsHoldsEverythingTheParagraphDraws(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPaintSignatureIsOfWhatTheParagraphDraws checks the signature that the damage tracker
+// compares paragraphs by (opsig.Signed): two paragraphs that draw the same have one
+// signature, whatever objects they are, a paragraph that draws something else has another,
+// and a paragraph that is laid out again has the signature of its new lines.
+func TestPaintSignatureIsOfWhatTheParagraphDraws(t *testing.T) {
+	e := bundledEngine(t)
+	const text = "the quick brown fox jumps over the lazy dog"
+	sig := func(p *paragraph) uint64 {
+		t.Helper()
+		s, ok := p.PaintSignature()
+		if !ok {
+			t.Fatal("the paragraph has no signature")
+		}
+		return s
+	}
+	base := sig(laidOut(t, e, text, 14, 400, nil))
+	red := ui.NewTextStyle(ui.TextStyleOpts{FontFamily: "Roboto", FontSize: ui.Ptr(14.0), Color: ui.Ptr(ui.NewColor(0xFFFF0000))})
+	colored := build(e, text, red, nil).(*paragraph)
+	colored.Layout(ui.NewParagraphConstraints(400))
+	tests := []struct {
+		name string
+		para *paragraph
+		same bool
+	}{
+		{"the same text made again", laidOut(t, e, text, 14, 400, nil), true},
+		{"the same lines at another width", laidOut(t, e, text, 14, 500, nil), true},
+		{"a letter more", laidOut(t, e, text+"s", 14, 400, nil), false},
+		{"another size", laidOut(t, e, text, 15, 400, nil), false},
+		{"another color", colored, false},
+		{"wrapped into two lines", laidOut(t, e, text, 14, 150, nil), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sig(tt.para)
+			if (got == base) != tt.same {
+				t.Errorf("signature = %x, the base is %x; want same = %v", got, base, tt.same)
+			}
+			// It is the signature of the draws.
+			var d opsig.Draws
+			tt.para.PaintParagraph(d.Add)
+			if want, _ := d.Sum(); got != want {
+				t.Errorf("signature = %x, the draws give %x", got, want)
+			}
+		})
+	}
+
+	// Laid out again: the signature follows the lines, each time.
+	p := laidOut(t, e, text, 14, 400, nil)
+	for _, step := range []struct {
+		width float64
+		same  bool
+	}{{400, true}, {150, false}, {400, true}, {120, false}, {500, true}} {
+		p.Layout(ui.NewParagraphConstraints(step.width))
+		if got := sig(p); (got == base) != step.same {
+			t.Errorf("laid out again at %v: signature = %x, the base is %x; want same = %v", step.width, got, base, step.same)
+		}
+		if again := sig(p); again != sig(p) {
+			t.Errorf("laid out at %v: two signatures of one layout differ", step.width)
+		}
 	}
 }

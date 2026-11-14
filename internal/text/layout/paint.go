@@ -7,6 +7,7 @@ import (
 	"github.com/go-text/typesetting/font"
 	ot "github.com/go-text/typesetting/font/opentype"
 	"github.com/go-text/typesetting/font/opentype/tables"
+	"github.com/rm4n0s/glutter/internal/gpu/opsig"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -134,6 +135,21 @@ func (p *paragraph) PaintBounds() ui.Rect {
 		bottom = max(bottom, l.top+l.height)
 	}
 	return ui.Rect{Left: -reach, Top: -reach, Right: right + reach, Bottom: bottom + reach}
+}
+
+// PaintSignature implements opsig.Signed: the signature of everything PaintParagraph emits,
+// which two paragraphs that draw the same share. The damage tracker asks for it each time a
+// picture with the paragraph is recorded again, so it is made once for a layout (it costs
+// the length of the text) and kept until the paragraph is laid out again.
+func (p *paragraph) PaintSignature() (uint64, bool) {
+	p.ensureLaidOut()
+	if !p.paintSigMade {
+		var d opsig.Draws
+		p.paintLines(0, len(p.lines), d.Add)
+		p.paintSig, p.paintSigOK = d.Sum()
+		p.paintSigMade = true
+	}
+	return p.paintSig, p.paintSigOK
 }
 
 // paintReach is how far the drawing of a line can reach past its box, above and below.

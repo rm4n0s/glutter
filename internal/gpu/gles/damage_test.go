@@ -24,7 +24,9 @@ func TestDamageIsToldToTheCompositor(t *testing.T) {
 	size := ui.Size{Width: 200, Height: 150}
 	still := damagePicture(ui.NewRectFromLTWH(0, 0, 50, 50))
 	moving := damagePicture(ui.NewRectFromLTWH(100, 20, 30, 30))
-	moved := damagePicture(ui.NewRectFromLTWH(100, 20, 30, 30)) // recorded again
+	// Recorded again, a pixel shorter: a picture that is recorded again and draws the same
+	// damages nothing (step 45.2).
+	moved := damagePicture(ui.NewRectFromLTWH(100, 20, 30, 29))
 
 	tests := []struct {
 		name string

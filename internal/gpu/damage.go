@@ -5,6 +5,7 @@ import (
 	"math"
 	"reflect"
 
+	"github.com/rm4n0s/glutter/internal/gpu/opsig"
 	"github.com/rm4n0s/glutter/internal/gpu/textdraw"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -30,16 +31,22 @@ const (
 
 // DamageTracker finds what changed between the scenes of a surface. It divides the
 // surface into tiles, and for each tile hashes what the scene draws there: every
-// picture (by identity: a picture is immutable, and a layer that the framework did
-// not repaint keeps its picture) with the transform it is drawn under, and the
-// parameters of the layers around it (clips, opacity, filters). A tile whose hash
-// differs from the last frame's is damaged. A picture that was recorded again is
-// damaged even if it drew the same, and what the tracker cannot bound (a draw that
-// fills the clip, an image filter on a layer, an unknown layer) damages the whole
-// clip or the whole surface; it errs on the side of drawing more.
+// drawing operation of every picture that reaches the tile, by its contents (opsig),
+// with the transform it is drawn under and the parameters of the clips and layers
+// around it, in the picture and in the scene (clips, opacity, filters). A tile whose
+// hash differs from the last frame's is damaged. A picture that was recorded again
+// is damaged where it draws something else than the picture before it, and nowhere
+// when it draws the same: a rebuild of the framework records a layer again whether
+// or not its drawing changed. What the tracker cannot bound (a draw that fills the
+// clip, an image filter on a layer, an unknown layer) damages the whole clip or the
+// whole surface, and an operation it cannot compare is damaged whenever its picture
+// is recorded again; it errs on the side of drawing more.
 //
-// The tracker holds on to the last scene's pictures and parameters so that their
-// addresses are not reused while they are compared. Use it on one thread.
+// The operations of a picture are measured once, when the tracker first sees the
+// picture (a picture is immutable, and a layer that the framework did not repaint
+// keeps its picture). The tracker holds on to the pictures of the last scene, and so
+// to everything they draw, so that the addresses in their signatures are not reused
+// while they are compared. Use it on one thread.
 //
 // Flutter: no counterpart (flutter::DiffContext)
 type DamageTracker struct {
@@ -141,45 +148,40 @@ func damageOf(old, cur []uint64, cols, rows, w, h int) Damage {
 	return Damage{Rects: rects}
 }
 
-// pictureInfo is what a picture can change: the rectangle, in the coordinates of the
-// picture, that its operations reach.
+// pictureInfo is what a picture draws, for the damage: an item for each of its drawing
+// operations (or, for a picture of many operations, for each cell of a grid over them).
+// It depends only on the contents of the picture, so two pictures that record the same
+// have the same items.
 type pictureInfo struct {
-	bounds ui.Rect
-	any    bool // bounds has something in it
-	// unbounded says that the picture draws something that fills the clip it is in
-	// (or whose reach is not known).
-	unbounded bool
+	items []pictureItem
 	// full says that the picture reads the pixels around what it draws (an image
 	// filter on a layer), so that a change next to it changes it too.
 	full bool
 }
 
-func (i *pictureInfo) add(r ui.Rect) {
-	if r.IsEmpty() {
-		return
-	}
-	if !i.any {
-		i.bounds, i.any = r, true
-		return
-	}
-	i.bounds = i.bounds.ExpandToInclude(r)
+// pictureItem is a part of a picture: where it can change pixels, and the signature of what
+// it draws there (the operation, the transform it is drawn under inside the picture, and
+// the clips and layers of the picture around it).
+type pictureItem struct {
+	// bounds is the rectangle, in the coordinates of the picture, that the item reaches.
+	bounds ui.Rect
+	// unbounded says that the item fills the clip the picture is drawn in (or that its
+	// reach is not known); bounds is not used.
+	unbounded bool
+	sig       uint64
 }
 
-// addUnder adds a rectangle of the child picture seen under the matrix.
-func (i *pictureInfo) addUnder(m *ui.Matrix4, r ui.Rect) {
-	if r.IsEmpty() {
-		return
-	}
-	d := m.TransformRect(r)
-	if !d.IsFinite() {
-		i.unbounded = true
-		return
-	}
-	i.add(d)
-}
+const (
+	// maxPictureItems is the most items a picture keeps one for each operation; a picture
+	// with more is folded into a grid, so that a frame costs no more than this for a
+	// picture that was kept, however much it draws.
+	maxPictureItems = 512
+	// pictureGrid is the number of cells of the grid along each axis.
+	pictureGrid = 16
+)
 
-// measure returns what the picture reaches, from the cache of the frames or by
-// walking its operations.
+// measure returns what the picture draws, from the cache of the frames or by walking its
+// operations.
 func (w *damageWalk) measure(p *ui.Picture) *pictureInfo {
 	if i, ok := w.cur[p]; ok {
 		return i
@@ -191,108 +193,293 @@ func (w *damageWalk) measure(p *ui.Picture) *pictureInfo {
 	i := &pictureInfo{}
 	w.cur[p] = i
 	if p != nil {
-		measureOps(w, i, p.DisplayList().Ops(), ui.NewMatrix4Identity())
+		ms := measureState{m: *ui.NewMatrix4Identity()}
+		ms.msig = hashMatrix(0, &ms.m)
+		w.measureOps(i, p, p.DisplayList().Ops(), ms)
+		i.fold()
 	}
 	return i
 }
 
-func measureOps(w *damageWalk, i *pictureInfo, ops []ui.DisplayOp, ctm *ui.Matrix4) {
-	m := *ctm
-	var stack []ui.Matrix4
-	for _, op := range ops {
+// measureState is what the operations of a picture are measured under: the transform, the
+// clip, and the signature of the clips and layers around them, all inside the picture.
+type measureState struct {
+	m ui.Matrix4
+	// msig is the signature of m.
+	msig uint64
+	// sig is the signature of the clips and layers around the operation.
+	sig uint64
+	// clip is the rectangle, in the coordinates of the picture, that the clips around the
+	// operation let through (a superset), when hasClip is set.
+	clip    ui.Rect
+	hasClip bool
+}
+
+// narrow intersects the clip with a rectangle given in the coordinates of the operation.
+func (ms *measureState) narrow(local ui.Rect) {
+	r := ms.m.TransformRect(local)
+	if !r.IsFinite() {
+		return
+	}
+	if ms.hasClip {
+		r = r.Intersect(ms.clip)
+	}
+	ms.clip, ms.hasClip = r, true
+}
+
+// add adds an item for an operation with the signature sig that reaches the rectangle
+// local, in the coordinates of the operation, or everything when unbounded is set.
+func (i *pictureInfo) add(ms *measureState, local ui.Rect, unbounded bool, sig uint64) {
+	it := pictureItem{sig: mix(mix(ms.sig, ms.msig), sig)}
+	if !unbounded {
+		// A rectangle with no area is kept: a hairline along an axis has such bounds, and
+		// draws a pixel's width around them.
+		it.bounds = ms.m.TransformRect(local)
+		unbounded = !it.bounds.IsFinite()
+	}
+	if ms.hasClip {
+		// The clip bounds what the item can change, whatever it reaches.
+		if unbounded {
+			it.bounds, unbounded = ms.clip, false
+		} else {
+			it.bounds = it.bounds.Intersect(ms.clip)
+		}
+		if it.bounds.Right < it.bounds.Left || it.bounds.Bottom < it.bounds.Top {
+			return
+		}
+	}
+	it.unbounded = unbounded
+	i.items = append(i.items, it)
+}
+
+// measureOps adds the items of the operations ops of the picture p, under the state ms.
+func (w *damageWalk) measureOps(i *pictureInfo, p *ui.Picture, ops []ui.DisplayOp, ms measureState) {
+	var stack []measureState
+	for n, op := range ops {
+		sig, known := opsig.Op(op)
+		if !known {
+			// An operation with no signature is taken by the identity of its picture: it
+			// is damaged whenever the picture is recorded again.
+			id, _ := w.identity(p)
+			sig = mix(mix(id, uint64(n)), sig)
+		}
 		switch v := op.(type) {
 		case ui.OpSave:
-			stack = append(stack, m)
+			stack = append(stack, ms)
 		case ui.OpSaveLayer:
-			stack = append(stack, m)
-			p := &v.Paint
-			if p.ImageFilter() != nil {
+			stack = append(stack, ms)
+			paint := &v.Paint
+			if paint.ImageFilter() != nil {
 				i.full = true
 			}
-			if p.BlendMode() != ui.BlendModeSrcOver || p.ColorFilter() != nil {
+			if paint.BlendMode() != ui.BlendModeSrcOver || paint.ColorFilter() != nil {
 				// The layer's blend or filter can change the pixels of the whole layer.
-				if v.HasBounds {
-					i.addUnder(&m, v.Bounds)
-				} else {
-					i.unbounded = true
-				}
+				i.add(&ms, v.Bounds, !v.HasBounds, sig)
 			}
+			ms.sig = mix(mix(ms.sig, ms.msig), sig)
 		case ui.OpRestore:
 			if len(stack) > 0 {
-				m = stack[len(stack)-1]
+				ms = stack[len(stack)-1]
 				stack = stack[:len(stack)-1]
 			}
 		case ui.OpTransform:
-			m.MultiplyBy(&v.Matrix)
-		case ui.OpClipRect, ui.OpClipRRect, ui.OpClipRSuperellipse, ui.OpClipPath:
-			// A clip only removes; ignoring it keeps the bounds a superset.
+			ms.m.MultiplyBy(&v.Matrix)
+			ms.msig = hashMatrix(0, &ms.m)
+		case ui.OpClipRect:
+			if v.Op != ui.ClipOpDifference {
+				ms.narrow(v.Rect)
+			}
+			ms.sig = mix(mix(ms.sig, ms.msig), sig)
+		case ui.OpClipRRect:
+			ms.narrow(v.RRect.OuterRect())
+			ms.sig = mix(mix(ms.sig, ms.msig), sig)
+		case ui.OpClipRSuperellipse:
+			ms.narrow(v.RSuperellipse.OuterRect())
+			ms.sig = mix(mix(ms.sig, ms.msig), sig)
+		case ui.OpClipPath:
+			if v.Path != nil {
+				if b := v.Path.GetBounds(); b != (ui.Rect{}) || v.Path.IsEmpty() {
+					ms.narrow(b)
+				}
+			}
+			ms.sig = mix(mix(ms.sig, ms.msig), sig)
 		case ui.OpDrawPicture:
 			child := w.measure(v.Picture)
 			i.full = i.full || child.full
-			i.unbounded = i.unbounded || child.unbounded
-			if child.any {
-				i.addUnder(&m, child.bounds)
+			for _, it := range child.items {
+				i.add(&ms, it.bounds, it.unbounded, it.sig)
 			}
 		case ui.OpDrawParagraph:
 			if b, ok := textdraw.Bounds(v); ok {
 				// The box of the paragraph holds what it draws; measuring the glyphs one by one
 				// would cost the length of the text each time the picture is recorded again.
-				i.addUnder(&m, b)
+				i.add(&ms, b, false, sig)
 				break
 			}
-			ok := textdraw.Expand(v, &m, func(inner ui.DisplayOp, im *ui.Matrix4) {
-				measureOps(w, i, []ui.DisplayOp{inner}, im)
+			var box boundsAcc
+			ok := textdraw.Expand(v, &ms.m, func(inner ui.DisplayOp, im *ui.Matrix4) {
+				b, unbounded := drawBounds(inner)
+				if !unbounded {
+					b = im.TransformRect(b)
+					unbounded = !b.IsFinite()
+				}
+				box.add(b, unbounded)
 			})
-			if !ok {
-				i.unbounded = true
-			}
-		case ui.OpDrawColor, ui.OpDrawPaint, ui.OpDrawAtlas:
-			i.unbounded = true
-		case ui.OpDrawImage:
-			if v.Image == nil {
-				break
-			}
-			measurePaint(i, &v.Paint)
-			i.addUnder(&m, ui.NewRectFromLTWH(v.Offset.Dx, v.Offset.Dy, float64(v.Image.Width()), float64(v.Image.Height())))
-		case ui.OpDrawImageRect:
-			measurePaint(i, &v.Paint)
-			i.addUnder(&m, v.Dst)
-		case ui.OpDrawImageNine:
-			measurePaint(i, &v.Paint)
-			i.addUnder(&m, v.Dst)
-		case ui.OpDrawVertices:
-			measurePaint(i, &v.Paint)
-			if v.Vertices == nil {
-				break
-			}
-			if pos := v.Vertices.Positions(); len(pos) > 0 {
-				i.addUnder(&m, pointsBounds(pos))
-			}
-		case ui.OpDrawShadow:
-			if b, ok := ShadowBounds(v); ok {
-				i.addUnder(&m, b.Inflate(2))
-			} else {
-				i.unbounded = true
+			if !ok || box.unbounded {
+				i.add(&ms, ui.Rect{}, true, sig)
+			} else if box.any {
+				// The box is in the coordinates of the picture already.
+				inPicture := ms
+				inPicture.m = *ui.NewMatrix4Identity()
+				i.add(&inPicture, box.r, false, sig)
 			}
 		default:
-			if img, mask := PaintFilters(op); img || mask {
-				i.unbounded = true
-			}
-			if b, ok := ShapeBounds(op); ok {
-				i.addUnder(&m, b)
-			} else {
-				i.unbounded = true
-			}
+			b, unbounded := drawBounds(op)
+			i.add(&ms, b, unbounded, sig)
 		}
 	}
 }
 
-// measurePaint makes the picture unbounded for a paint whose filters spread what it
-// draws past its geometry.
-func measurePaint(i *pictureInfo, p *ui.Paint) {
-	if p.MaskFilter() != nil || p.ImageFilter() != nil {
-		i.unbounded = true
+// boundsAcc is the box of some rectangles; a rectangle with no area counts (the bounds of a
+// hairline along an axis).
+type boundsAcc struct {
+	r         ui.Rect
+	any       bool
+	unbounded bool
+}
+
+func (a *boundsAcc) add(r ui.Rect, unbounded bool) {
+	switch {
+	case unbounded:
+		a.unbounded = true
+	case !a.any:
+		a.r, a.any = r, true
+	default:
+		a.r = a.r.ExpandToInclude(r)
 	}
+}
+
+// drawBounds returns the rectangle, in its own coordinates, that a drawing operation can
+// change, or says that it fills its clip or that its reach is not known. It is for the
+// operations that draw (not a picture or a paragraph, which are measured by their parts).
+func drawBounds(op ui.DisplayOp) (r ui.Rect, unbounded bool) {
+	switch v := op.(type) {
+	case ui.OpDrawColor, ui.OpDrawPaint, ui.OpDrawAtlas:
+		return ui.Rect{}, true
+	case ui.OpDrawPicture:
+		if v.Picture == nil {
+			return ui.Rect{}, false
+		}
+		// A picture inside a paragraph (a color glyph) draws inside its cull rectangle.
+		return v.Picture.CullRect(), false
+	case ui.OpDrawImage:
+		if v.Image == nil {
+			return ui.Rect{}, false
+		}
+		return ui.NewRectFromLTWH(v.Offset.Dx, v.Offset.Dy, float64(v.Image.Width()), float64(v.Image.Height())), spreads(&v.Paint)
+	case ui.OpDrawImageRect:
+		return v.Dst, spreads(&v.Paint)
+	case ui.OpDrawImageNine:
+		return v.Dst, spreads(&v.Paint)
+	case ui.OpDrawVertices:
+		if v.Vertices == nil {
+			return ui.Rect{}, spreads(&v.Paint)
+		}
+		pos := v.Vertices.Positions()
+		if len(pos) == 0 {
+			return ui.Rect{}, spreads(&v.Paint)
+		}
+		return pointsBounds(pos), spreads(&v.Paint)
+	case ui.OpDrawShadow:
+		if b, ok := ShadowBounds(v); ok {
+			return b.Inflate(2), false
+		}
+		return ui.Rect{}, true
+	}
+	if img, mask := PaintFilters(op); img || mask {
+		return ui.Rect{}, true
+	}
+	if b, ok := ShapeBounds(op); ok {
+		return b, false
+	}
+	return ui.Rect{}, true
+}
+
+// spreads says that the filters of a paint spread what it draws past its geometry.
+func spreads(p *ui.Paint) bool { return p.MaskFilter() != nil || p.ImageFilter() != nil }
+
+// fold replaces the items of a picture of many operations by the cells of a grid over the
+// items that have bounds: a cell is an item whose signature is made of the signatures of
+// the items that reach it, in order, and whose bounds hold what they reach of it. An item
+// that fills the clip stays an item of its own, and is in every cell, so that its place in
+// the order still counts.
+func (i *pictureInfo) fold() {
+	if len(i.items) <= maxPictureItems {
+		return
+	}
+	var box boundsAcc
+	for _, it := range i.items {
+		box.add(it.bounds, it.unbounded)
+	}
+	if !box.any {
+		return
+	}
+	cw, ch := box.r.Width()/pictureGrid, box.r.Height()/pictureGrid
+	if !(cw > 0) || !(ch > 0) {
+		return
+	}
+	var cells [pictureGrid * pictureGrid]struct {
+		sig uint64
+		box boundsAcc
+	}
+	cellOf := func(v, origin, size float64) int {
+		return max(0, min(pictureGrid-1, int(math.Floor((v-origin)/size))))
+	}
+	var folded []pictureItem
+	for _, it := range i.items {
+		if it.unbounded {
+			folded = append(folded, it)
+			for c := range cells {
+				cells[c].sig = mix(cells[c].sig, it.sig)
+			}
+			continue
+		}
+		x0, x1 := cellOf(it.bounds.Left, box.r.Left, cw), cellOf(it.bounds.Right, box.r.Left, cw)
+		y0, y1 := cellOf(it.bounds.Top, box.r.Top, ch), cellOf(it.bounds.Bottom, box.r.Top, ch)
+		for y := y0; y <= y1; y++ {
+			for x := x0; x <= x1; x++ {
+				c := &cells[y*pictureGrid+x]
+				cell := ui.Rect{
+					Left: box.r.Left + float64(x)*cw, Top: box.r.Top + float64(y)*ch,
+					Right: box.r.Left + float64(x+1)*cw, Bottom: box.r.Top + float64(y+1)*ch,
+				}
+				if x == pictureGrid-1 {
+					cell.Right = box.r.Right
+				}
+				if y == pictureGrid-1 {
+					cell.Bottom = box.r.Bottom
+				}
+				// The part of the item in the cell. Every cell that the item was given gets
+				// it, also when rounding puts an edge of the item a hair outside the cell: the
+				// item's own extent then stands for the part, which only makes it larger.
+				part := it.bounds.Intersect(cell)
+				if part.Right < part.Left {
+					part.Left, part.Right = it.bounds.Left, it.bounds.Right
+				}
+				if part.Bottom < part.Top {
+					part.Top, part.Bottom = it.bounds.Top, it.bounds.Bottom
+				}
+				c.sig = mix(c.sig, it.sig)
+				c.box.add(part, false)
+			}
+		}
+	}
+	for c := range cells {
+		if cells[c].box.any {
+			folded = append(folded, pictureItem{bounds: cells[c].box.r, sig: cells[c].sig})
+		}
+	}
+	i.items = folded
 }
 
 // walkState is the transform, the clip and the layer parameters around a layer.
@@ -313,9 +500,15 @@ type damageWalk struct {
 	full       bool
 }
 
-const hashPrime = 1099511628211
-
-func mix(h, v uint64) uint64 { return (h ^ v) * hashPrime }
+// mix adds a word to a hash, mixing every bit of the word into every bit of the result (as
+// Hasher does), so that the signatures of two rectangles that differ in a high bit of two
+// coordinates never cancel.
+func mix(h, v uint64) uint64 {
+	x := (h ^ v) * 0x9E3779B97F4A7C15
+	x ^= x >> 32
+	x *= 0xD6E8FEB86659FD93
+	return x ^ x>>29
+}
 
 func mixFloats(h uint64, vs ...float64) uint64 {
 	for _, v := range vs {
@@ -402,16 +595,15 @@ func (w *damageWalk) layer(l ui.Layer, st walkState) {
 		if info.full {
 			w.full = true
 		}
-		bounds := st.clip
-		if !info.unbounded {
-			bounds = bounds.Intersect(w.device(&m, info.bounds))
-			if !info.any {
-				return
-			}
-		}
 		sig := hashMatrix(st.sig, &m)
-		id, _ := w.identity(v.Picture)
-		w.add(bounds, mix(sig, id))
+		for i := range info.items {
+			it := &info.items[i]
+			bounds := st.clip
+			if !it.unbounded {
+				bounds = bounds.Intersect(w.device(&m, it.bounds))
+			}
+			w.add(bounds, mix(sig, it.sig))
+		}
 	case *ui.TextureLayer:
 		m := st.m
 		bounds := st.clip.Intersect(w.device(&m, ui.NewRectFromLTWH(v.Offset.Dx, v.Offset.Dy, v.Width, v.Height)))

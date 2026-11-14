@@ -89,11 +89,14 @@ func NewRenderDecoratedBox(decoration painting.Decoration, child Box, opts ...Re
 // Flutter: rendering/proxy_box.dart RenderDecoratedBox.decoration
 func (r *RenderDecoratedBox) Decoration() painting.Decoration { return r.decoration }
 
-// SetDecoration changes the decoration and marks the box as needing paint.
+// SetDecoration changes the decoration and marks the box as needing paint. A decoration
+// that equals the one it has (painting.DecorationsEqual, Dart's ==) changes nothing: a
+// build makes a new decoration each time, and one that paints the same is not painted
+// again.
 //
 // Flutter: rendering/proxy_box.dart RenderDecoratedBox.decoration
 func (r *RenderDecoratedBox) SetDecoration(value painting.Decoration) {
-	if value == r.decoration {
+	if painting.DecorationsEqual(value, r.decoration) {
 		return
 	}
 	r.disposePainter()

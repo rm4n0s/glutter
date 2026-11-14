@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/proof"
+	"github.com/rm4n0s/glutter/material/fonts"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -209,5 +211,221 @@ func TestShadowBoundsHoldTheDrawnShadow(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// recipeOp is one drawing of a picture, as data: a picture is recorded from its recipe, so
+// that it can be recorded again, the same or with a change, from new objects each time.
+type recipeOp struct {
+	kind  int
+	x, y  float64
+	color uint32
+}
+
+// recipeKinds is how many kinds of drawing a recipe has.
+const recipeKinds = 12
+
+// recordRecipe records the drawings of a recipe into a new picture. Every path, paint,
+// gradient, filter and paragraph is made again; the image is the same handle.
+func recordRecipe(engine ui.ParagraphFactory, img *ui.Image, ops []recipeOp) *ui.Picture {
+	rec := ui.NewPictureRecorder()
+	c := ui.NewCanvas(rec)
+	for _, op := range ops {
+		c.Save()
+		c.Translate(op.x, op.y)
+		switch op.kind {
+		case 0:
+			c.DrawRect(rectAt(0, 0, 40, 14), paint(op.color))
+		case 1:
+			p := paint(op.color)
+			p.SetStyle(ui.PaintingStyleStroke)
+			p.SetStrokeWidth(5)
+			c.DrawCircle(ui.Offset{Dx: 14, Dy: 14}, 11, p)
+		case 2:
+			tri := ui.NewPath()
+			tri.MoveTo(0, 0)
+			tri.LineTo(30, 6)
+			tri.LineTo(8, 22)
+			tri.Close()
+			c.DrawPath(tri, paint(op.color))
+		case 3:
+			box := ui.NewPath()
+			box.AddRRect(ui.NewRRectFromRectXY(rectAt(0, 0, 36, 20), 5, 5))
+			c.DrawShadow(box, ui.NewColor(op.color), 6, false)
+		case 4:
+			p := paint(op.color)
+			p.SetMaskFilter(ui.NewMaskFilterBlur(ui.BlurStyleNormal, 3))
+			c.ClipRect(rectAt(-12, -12, 60, 44))
+			c.DrawRect(rectAt(0, 0, 30, 16), p)
+		case 5:
+			c.DrawImage(img, ui.Offset{}, ui.NewPaint())
+		case 6:
+			c.ClipRect(rectAt(0, 0, 34, 12))
+			c.DrawColor(ui.NewColor(op.color), ui.BlendModeSrcOver)
+		case 7:
+			c.SaveLayer(ui.Ptr(rectAt(0, 0, 44, 20)), blended(0x80336699, ui.BlendModeMultiply))
+			c.DrawOval(rectAt(0, 0, 44, 20), paint(op.color))
+			c.Restore()
+		case 8:
+			c.Rotate(0.5)
+			c.DrawRRect(ui.NewRRectFromRectXY(rectAt(0, 0, 36, 12), 3, 3), paint(op.color))
+		case 9:
+			p := ui.NewPaint()
+			p.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: 40}, []ui.Color{ui.NewColor(op.color), ui.NewColor(0xFFFFFFFF)}))
+			c.DrawRect(rectAt(0, 0, 40, 12), p)
+		case 10:
+			b := ui.NewParagraphBuilder(engine, ui.NewParagraphStyle(ui.ParagraphStyleOpts{}))
+			b.PushStyle(ui.NewTextStyle(ui.TextStyleOpts{FontFamily: fonts.RobotoFamily, FontSize: ui.Ptr(12.0), Color: ui.Ptr(ui.NewColor(op.color))}))
+			b.AddText([]string{"damage", "a row", "typed", "Glutter"}[op.color%4])
+			p := b.Build()
+			p.Layout(ui.NewParagraphConstraints(80))
+			c.DrawParagraph(p, ui.Offset{})
+		case 11:
+			p := paint(op.color)
+			p.SetStyle(ui.PaintingStyleStroke)
+			c.DrawLine(ui.Offset{}, ui.Offset{Dx: 40}, p)
+		}
+		c.Restore()
+	}
+	return rec.EndRecording()
+}
+
+// TestDamageOfPicturesRecordedAgainCoversEveryChangedPixel draws random pairs of scenes
+// whose pictures were all recorded again, some with a drawing changed, moved, added or
+// removed and some the same, and checks that every pixel that differs between the two
+// frames is inside the damage of the second, that a frame that draws the same has no
+// damage, and that the damage is a small part of the pictures when little changed.
+func TestDamageOfPicturesRecordedAgainCoversEveryChangedPixel(t *testing.T) {
+	const w, h = 320, 280
+	rng := rand.New(rand.NewSource(45))
+	engine := proof.BundledTextEngine()
+	pix := make([]byte, 4*12*12)
+	for i := range pix {
+		pix[i] = byte(40 + i%200)
+	}
+	img := ui.NewImageFromRGBA(pix, 12, 12)
+	randomOp := func() recipeOp {
+		return recipeOp{kind: rng.Intn(recipeKinds), x: float64(rng.Intn(150)), y: float64(rng.Intn(130)), color: 0xFF000000 | uint32(rng.Intn(1<<24))}
+	}
+	type placed struct {
+		at    ui.Offset
+		alpha int
+		clip  *ui.Rect
+		ops   []recipeOp
+	}
+	build := func(parts []placed) *ui.Scene {
+		b := ui.NewSceneBuilder()
+		for _, p := range parts {
+			if p.clip != nil {
+				b.PushClipRect(*p.clip)
+			}
+			if p.alpha != 0 {
+				b.PushOpacity(p.alpha)
+			}
+			b.AddPicture(p.at, recordRecipe(engine, img, p.ops))
+			if p.alpha != 0 {
+				b.Pop()
+			}
+			if p.clip != nil {
+				b.Pop()
+			}
+		}
+		return b.Build()
+	}
+	var same, partial, small int
+	const iterations = 300
+	for iter := 0; iter < iterations; iter++ {
+		parts := make([]placed, 1+rng.Intn(3))
+		for i := range parts {
+			parts[i].at = ui.Offset{Dx: float64(rng.Intn(100)), Dy: float64(rng.Intn(90))}
+			if rng.Intn(4) == 0 {
+				parts[i].alpha = 60 + rng.Intn(180)
+			}
+			if rng.Intn(4) == 0 {
+				c := rectAt(float64(rng.Intn(80)), float64(rng.Intn(70)), float64(120+rng.Intn(120)), float64(100+rng.Intn(100)))
+				parts[i].clip = &c
+			}
+			parts[i].ops = make([]recipeOp, 3+rng.Intn(8))
+			for j := range parts[i].ops {
+				parts[i].ops[j] = randomOp()
+			}
+		}
+		// The second frame: every picture recorded again, with at most one drawing of
+		// one picture changed.
+		after := make([]placed, len(parts))
+		copy(after, parts)
+		changes := 0
+		if iter%4 != 0 {
+			i := rng.Intn(len(after))
+			ops := append([]recipeOp(nil), after[i].ops...)
+			j := rng.Intn(len(ops))
+			switch rng.Intn(5) {
+			case 0:
+				ops[j].color ^= 0x00FFFFFF
+			case 1:
+				ops[j].x += float64(rng.Intn(40) - 20)
+				ops[j].y += float64(rng.Intn(40) - 20)
+			case 2:
+				ops = append(ops[:j], ops[j+1:]...)
+			case 3:
+				ops = append(ops[:j], append([]recipeOp{randomOp()}, ops[j:]...)...)
+			case 4:
+				ops[j].kind = (ops[j].kind + 1 + rng.Intn(recipeKinds-1)) % recipeKinds
+			}
+			after[i].ops = ops
+			changes = 1
+		}
+		sa, sb := build(parts), build(after)
+		ia, err := Render(sa, w, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ib, err := Render(sb, w, h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr := gpu.NewDamageTracker()
+		tr.Update(sa, w, h)
+		d := tr.Update(sb, w, h)
+		if d.Full {
+			t.Fatalf("iteration %d: the whole surface is damaged", iter)
+		}
+		if changes == 0 {
+			same++
+			if len(d.Rects) != 0 {
+				t.Fatalf("iteration %d: the pictures recorded again draw the same, and the damage is %v", iter, d.Rects)
+			}
+		} else if len(d.Rects) > 0 {
+			partial++
+			area := 0
+			for _, r := range d.Rects {
+				area += r.Dx() * r.Dy()
+			}
+			if area*3 < w*h {
+				small++
+			}
+		}
+		for y := 0; y < h; y++ {
+			for x := 0; x < w; x++ {
+				o := y*ia.Stride + x*4
+				if string(ia.Pix[o:o+4]) == string(ib.Pix[o:o+4]) {
+					continue
+				}
+				in := false
+				for _, r := range d.Rects {
+					in = in || image.Pt(x, y).In(r)
+				}
+				if !in {
+					t.Fatalf("iteration %d: pixel (%d, %d) changed (%v to %v) outside the damage %v\nfrom %+v\nto %+v",
+						iter, x, y, ia.Pix[o:o+4], ib.Pix[o:o+4], d.Rects, parts, after)
+				}
+			}
+		}
+	}
+	if same != iterations/4 {
+		t.Errorf("%d frames drew the same, want %d", same, iterations/4)
+	}
+	if partial < iterations/2 || small < partial/2 {
+		t.Errorf("%d of %d changed frames had damage, %d of them under a third of the surface; the test checks too little", partial, iterations-same, small)
 	}
 }

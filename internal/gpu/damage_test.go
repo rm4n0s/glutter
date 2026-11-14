@@ -54,7 +54,8 @@ func covers(d Damage, p image.Point) bool {
 func TestDamageTrackerFrames(t *testing.T) {
 	a := rectPicture(ui.NewRectFromLTWH(0, 0, 40, 40), 0xFFFF0000)
 	b := rectPicture(ui.NewRectFromLTWH(0, 0, 40, 40), 0xFF00FF00)
-	b2 := rectPicture(ui.NewRectFromLTWH(0, 0, 40, 40), 0xFF00FF00) // recorded again
+	bAgain := rectPicture(ui.NewRectFromLTWH(0, 0, 40, 40), 0xFF00FF00) // recorded again, the same
+	b2 := rectPicture(ui.NewRectFromLTWH(0, 0, 40, 40), 0xFF00FF80)     // recorded again, another color
 	fill := pictureOf(func(c *ui.Canvas) { c.DrawPaint(paintOf(0x80000000)) })
 	clip := ui.NewRectFromLTWH(300, 300, 50, 50)
 	blur := pictureOf(func(c *ui.Canvas) {
@@ -87,7 +88,11 @@ func TestDamageTrackerFrames(t *testing.T) {
 			scene: func() *ui.Scene {
 				return sceneOf(damageItem{pic: a, at: ui.Offset{Dx: 10, Dy: 10}}, damageItem{pic: b, at: ui.Offset{Dx: 200, Dy: 200}})
 			}},
-		{name: "a picture recorded again damages the tiles it covers",
+		{name: "a picture recorded again that draws the same changes nothing",
+			scene: func() *ui.Scene {
+				return sceneOf(damageItem{pic: a, at: ui.Offset{Dx: 10, Dy: 10}}, damageItem{pic: bAgain, at: ui.Offset{Dx: 200, Dy: 200}})
+			}},
+		{name: "a picture recorded again that draws something else damages the tiles it covers",
 			scene: func() *ui.Scene {
 				return sceneOf(damageItem{pic: a, at: ui.Offset{Dx: 10, Dy: 10}}, damageItem{pic: b2, at: ui.Offset{Dx: 200, Dy: 200}})
 			},
@@ -182,7 +187,7 @@ func TestDamageTrackerMergesManyRectangles(t *testing.T) {
 	tr.Update(build(pics), 2000, 2000)
 	again := make([]*ui.Picture, len(pics))
 	for i := range again {
-		again[i] = rectPicture(ui.NewRectFromLTWH(0, 0, 10, 10), 0xFF000000)
+		again[i] = rectPicture(ui.NewRectFromLTWH(0, 0, 10, 10), 0xFF000080)
 	}
 	d := tr.Update(build(again), 2000, 2000)
 	if d.Full || len(d.Rects) != 1 {
@@ -191,6 +196,326 @@ func TestDamageTrackerMergesManyRectangles(t *testing.T) {
 	for i := range pics {
 		if p := image.Pt(i*70+5, i*70+5); !p.In(d.Rects[0]) {
 			t.Errorf("%v is outside %v", p, d.Rects[0])
+		}
+	}
+}
+
+// rowsPicture records a picture of rows, as a list or the lines of an editor are: a
+// background, and for each row a rectangle 20 pixels high from the top of the picture down.
+// edit changes the canvas calls of one row.
+func rowsPicture(rows int, draw func(c *ui.Canvas, row int, box ui.Rect)) *ui.Picture {
+	return pictureOf(func(c *ui.Canvas) {
+		c.DrawRect(ui.NewRectFromLTWH(0, 0, 600, float64(rows*20)), paintOf(0xFFFFFFFF))
+		for row := 0; row < rows; row++ {
+			draw(c, row, ui.NewRectFromLTWH(10, float64(row*20)+2, 400, 16))
+		}
+	})
+}
+
+// tilesOf is the rectangle of the tiles of 64 pixels that hold the pixels from x0, y0 up
+// to x1, y1.
+func tilesOf(x0, y0, x1, y1 int) image.Rectangle {
+	return image.Rect(x0/damageTile*damageTile, y0/damageTile*damageTile, (x1+damageTile-1)/damageTile*damageTile, (y1+damageTile-1)/damageTile*damageTile)
+}
+
+// TestDamageOfAPictureRecordedAgain records a picture of 30 rows again with one thing
+// changed, and checks that the damage is the tiles of what changed and not the picture.
+func TestDamageOfAPictureRecordedAgain(t *testing.T) {
+	const w, h = 640, 640
+	plain := func(c *ui.Canvas, row int, box ui.Rect) { c.DrawRect(box, paintOf(0xFF202020)) }
+	// only makes a drawing that differs from plain in one row.
+	only := func(row int, draw func(c *ui.Canvas, box ui.Rect)) func(c *ui.Canvas, row int, box ui.Rect) {
+		return func(c *ui.Canvas, r int, box ui.Rect) {
+			if r == row {
+				draw(c, box)
+				return
+			}
+			plain(c, r, box)
+		}
+	}
+	gradient := func(to float64) *ui.Paint {
+		p := ui.NewPaint()
+		p.SetShader(ui.NewGradientLinear(ui.Offset{}, ui.Offset{Dx: to}, []ui.Color{ui.NewColor(0xFFFF0000), ui.NewColor(0xFF0000FF)}))
+		return p
+	}
+	// Row 12 is the pixels from y 242 to 258, x 10 to 410: the tiles from 192 to 320 down,
+	// 0 to 448 across.
+	row12 := tilesOf(10, 242, 410, 258)
+	tests := []struct {
+		name   string
+		before func(c *ui.Canvas, row int, box ui.Rect)
+		after  func(c *ui.Canvas, row int, box ui.Rect)
+		// want holds the damage; nil means that there is none.
+		want []image.Rectangle
+		// notIn are pixels that must not be damaged.
+		notIn []image.Point
+	}{
+		{name: "the same drawing", before: plain, after: plain},
+		{name: "the color of a row", before: plain,
+			after: only(12, func(c *ui.Canvas, box ui.Rect) { c.DrawRect(box, paintOf(0xFF2020F0)) }),
+			want:  []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}, {500, 250}}},
+		{name: "a row that is shorter", before: plain,
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawRect(ui.NewRectFromLTRB(box.Left, box.Top, 100, box.Bottom), paintOf(0xFF202020))
+			}),
+			want: []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "a row that draws nothing", before: plain,
+			after: only(12, func(*ui.Canvas, ui.Rect) {}),
+			want:  []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "a row that draws something more", before: plain,
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawRect(box, paintOf(0xFF202020))
+				c.DrawCircle(ui.Offset{Dx: 500, Dy: 250}, 6, paintOf(0xFFFF0000))
+			}),
+			want: []image.Rectangle{tilesOf(493, 243, 507, 257)}, notIn: []image.Point{{20, 250}, {20, 100}}},
+		{name: "a row that moved", before: plain,
+			after: only(3, func(c *ui.Canvas, box ui.Rect) { c.DrawRect(box.Shift(ui.Offset{Dx: 150}), paintOf(0xFF202020)) }),
+			want:  []image.Rectangle{tilesOf(10, 62, 560, 78)}, notIn: []image.Point{{20, 200}, {600, 20}}},
+		{name: "a row under another transform", before: plain,
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.Save()
+				c.Translate(0, 1)
+				c.DrawRect(box, paintOf(0xFF202020))
+				c.Restore()
+			}),
+			want: []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "a row under another clip",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.Save()
+				c.ClipRect(ui.NewRectFromLTRB(0, box.Top, 300, box.Bottom))
+				c.DrawRect(box, paintOf(0xFF202020))
+				c.Restore()
+			}),
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.Save()
+				c.ClipRect(ui.NewRectFromLTRB(0, box.Top, 200, box.Bottom))
+				c.DrawRect(box, paintOf(0xFF202020))
+				c.Restore()
+			}),
+			want: []image.Rectangle{tilesOf(10, 242, 300, 258)}, notIn: []image.Point{{20, 100}, {400, 250}}},
+		{name: "a row in a layer of another alpha",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.SaveLayer(&box, paintOf(0x80000000))
+				c.DrawRect(box, paintOf(0xFF202020))
+				c.Restore()
+			}),
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.SaveLayer(&box, paintOf(0x40000000))
+				c.DrawRect(box, paintOf(0xFF202020))
+				c.Restore()
+			}),
+			want: []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "a gradient made again",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) { c.DrawRect(box, gradient(400)) }),
+			after:  only(12, func(c *ui.Canvas, box ui.Rect) { c.DrawRect(box, gradient(400)) })},
+		{name: "another gradient",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) { c.DrawRect(box, gradient(400)) }),
+			after:  only(12, func(c *ui.Canvas, box ui.Rect) { c.DrawRect(box, gradient(300)) }),
+			want:   []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "two rows that swap what they draw over each other",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawRect(box, paintOf(0xFFFF0000))
+				c.DrawRect(box, paintOf(0xFF0000FF))
+			}),
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawRect(box, paintOf(0xFF0000FF))
+				c.DrawRect(box, paintOf(0xFFFF0000))
+			}),
+			want: []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "a hairline along an axis that moved",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) {
+				p := paintOf(0xFF000000)
+				p.SetStyle(ui.PaintingStyleStroke)
+				c.DrawLine(ui.Offset{Dx: 10, Dy: 250}, ui.Offset{Dx: 60, Dy: 250}, p)
+			}),
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				p := paintOf(0xFF000000)
+				p.SetStyle(ui.PaintingStyleStroke)
+				c.DrawLine(ui.Offset{Dx: 10, Dy: 330}, ui.Offset{Dx: 60, Dy: 330}, p)
+			}),
+			want: []image.Rectangle{tilesOf(10, 249, 60, 251), tilesOf(10, 329, 60, 331)}, notIn: []image.Point{{20, 100}, {200, 250}}},
+		{name: "a fill of the clip of a row",
+			before: plain,
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.Save()
+				c.ClipRect(box)
+				c.DrawColor(ui.NewColor(0xFF00FF00), ui.BlendModeSrcOver)
+				c.Restore()
+			}),
+			want: []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "a picture in the picture",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawPicture(pictureOf(func(c *ui.Canvas) { c.DrawRect(box, paintOf(0xFF102030)) }))
+			}),
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawPicture(pictureOf(func(c *ui.Canvas) { c.DrawRect(box, paintOf(0xFF102031)) }))
+			}),
+			want: []image.Rectangle{row12}, notIn: []image.Point{{20, 100}, {20, 400}}},
+		{name: "the same picture in the picture, made again",
+			before: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawPicture(pictureOf(func(c *ui.Canvas) { c.DrawRect(box, paintOf(0xFF102030)) }))
+			}),
+			after: only(12, func(c *ui.Canvas, box ui.Rect) {
+				c.DrawPicture(pictureOf(func(c *ui.Canvas) { c.DrawRect(box, paintOf(0xFF102030)) }))
+			})},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := NewDamageTracker()
+			at := ui.Offset{Dx: 0, Dy: 0}
+			tr.Update(sceneOf(damageItem{pic: rowsPicture(30, tt.before), at: at}), w, h)
+			d := tr.Update(sceneOf(damageItem{pic: rowsPicture(30, tt.after), at: at}), w, h)
+			if d.Full {
+				t.Fatalf("the whole surface is damaged")
+			}
+			if tt.want == nil {
+				if len(d.Rects) != 0 {
+					t.Errorf("damage = %v, want none", d.Rects)
+				}
+				return
+			}
+			for _, want := range tt.want {
+				for _, p := range []image.Point{want.Min, {X: want.Max.X - 1, Y: want.Max.Y - 1}} {
+					if !covers(d, p) {
+						t.Errorf("%v is not damaged: %v, want %v", p, d.Rects, tt.want)
+					}
+				}
+			}
+			for _, p := range tt.notIn {
+				if covers(d, p) {
+					t.Errorf("%v is damaged: %v, want only %v", p, d.Rects, tt.want)
+				}
+			}
+			// The damage is what was asked for and no more.
+			area := 0
+			for _, r := range d.Rects {
+				area += r.Dx() * r.Dy()
+			}
+			wantArea := 0
+			for _, r := range tt.want {
+				wantArea += r.Dx() * r.Dy()
+			}
+			if area > wantArea {
+				t.Errorf("damage = %v (%d pixels), want %v (%d pixels)", d.Rects, area, tt.want, wantArea)
+			}
+		})
+	}
+}
+
+// mutePainter is a paragraph layout that cannot draw itself, so that it has no signature.
+type mutePainter struct{ ui.ParagraphLayout }
+
+// TestAnOperationWithoutASignatureIsDamagedWhenRecordedAgain checks the rule for what the
+// tracker cannot compare: it is taken by the identity of its picture, as every operation
+// was before step 45.2.
+func TestAnOperationWithoutASignatureIsDamagedWhenRecordedAgain(t *testing.T) {
+	para := ui.NewParagraph(&mutePainter{})
+	record := func() *ui.Picture {
+		return pictureOf(func(c *ui.Canvas) {
+			c.DrawRect(ui.NewRectFromLTWH(300, 300, 20, 20), paintOf(0xFF000000))
+			c.Save()
+			c.ClipRect(ui.NewRectFromLTWH(10, 10, 30, 30))
+			c.DrawParagraph(para, ui.Offset{Dx: 10, Dy: 10})
+			c.Restore()
+		})
+	}
+	tr := NewDamageTracker()
+	pic := record()
+	tr.Update(sceneOf(damageItem{pic: pic}), 512, 512)
+	if d := tr.Update(sceneOf(damageItem{pic: pic}), 512, 512); d.Full || len(d.Rects) != 0 {
+		t.Errorf("the same picture: damage = %+v, want none", d)
+	}
+	d := tr.Update(sceneOf(damageItem{pic: record()}), 512, 512)
+	if d.Full || !covers(d, image.Pt(20, 20)) || covers(d, image.Pt(310, 310)) {
+		t.Errorf("the picture recorded again: damage = %+v, want the clip of the paragraph and not the rectangle", d)
+	}
+}
+
+// TestDamageOfAPictureOfManyOperations records a picture of more operations than the
+// tracker keeps an item for, which it folds into a grid: the damage of a change is still
+// near the change, the same picture again still damages nothing, and the order of two
+// operations still counts.
+func TestDamageOfAPictureOfManyOperations(t *testing.T) {
+	const w, h = 1024, 1024
+	const cols, rows = 50, 50 // 2,500 squares of 16 pixels, 20 apart
+	record := func(changed int, argb uint32, fillFirst bool) *ui.Picture {
+		return pictureOf(func(c *ui.Canvas) {
+			if fillFirst {
+				c.DrawColor(ui.NewColor(0x20FF0000), ui.BlendModeSrcOver)
+			}
+			for i := 0; i < cols*rows; i++ {
+				color := uint32(0xFF404040)
+				if i == changed {
+					color = argb
+				}
+				c.DrawRect(ui.NewRectFromLTWH(float64(i%cols*20), float64(i/cols*20), 16, 16), paintOf(color))
+			}
+			if !fillFirst {
+				c.DrawColor(ui.NewColor(0x20FF0000), ui.BlendModeSrcOver)
+			}
+		})
+	}
+	base := record(-1, 0, true)
+	tr := NewDamageTracker()
+	wk := &damageWalk{t: tr, cur: map[*ui.Picture]*pictureInfo{}}
+	if n := len(wk.measure(base).items); n > maxPictureItems {
+		t.Fatalf("the picture has %d items, want at most %d", n, maxPictureItems)
+	}
+	// Square 1275 is column 25, row 25: the pixels from 500 to 516 both ways.
+	tests := []struct {
+		name    string
+		picture *ui.Picture
+		in      []image.Point
+		notIn   []image.Point
+	}{
+		{name: "the same drawing", picture: record(-1, 0, true)},
+		{name: "one square of another color", picture: record(1275, 0xFFFF0000, true),
+			in: []image.Point{{505, 505}}, notIn: []image.Point{{100, 100}, {900, 505}, {505, 900}, {300, 505}}},
+		{name: "the fill of the clip after the squares", picture: record(-1, 0, false),
+			in: []image.Point{{5, 5}, {505, 505}, {990, 990}, {1010, 1010}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := NewDamageTracker()
+			tr.Update(sceneOf(damageItem{pic: base}), w, h)
+			d := tr.Update(sceneOf(damageItem{pic: tt.picture}), w, h)
+			if d.Full {
+				t.Fatal("the whole surface is damaged")
+			}
+			if tt.in == nil && len(d.Rects) != 0 {
+				t.Errorf("damage = %v, want none", d.Rects)
+			}
+			for _, p := range tt.in {
+				if !covers(d, p) {
+					t.Errorf("%v is not damaged: %v", p, d.Rects)
+				}
+			}
+			for _, p := range tt.notIn {
+				if covers(d, p) {
+					t.Errorf("%v is damaged: %v", p, d.Rects)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkDamageOfKeptPictures is an Update of a scene whose pictures were all kept: what
+// every frame of a window pays for the damage. Run it with
+//
+//	go test ./internal/gpu -run xxx -bench DamageOfKeptPictures -benchmem
+func BenchmarkDamageOfKeptPictures(b *testing.B) {
+	var items []damageItem
+	for i := 0; i < 40; i++ {
+		pic := rowsPicture(30, func(c *ui.Canvas, row int, box ui.Rect) { c.DrawRect(box, paintOf(0xFF202020)) })
+		items = append(items, damageItem{pic: pic, at: ui.Offset{Dx: float64(i % 8 * 240), Dy: float64(i / 8 * 216)}})
+	}
+	tr := NewDamageTracker()
+	scenes := [2]*ui.Scene{sceneOf(items...), sceneOf(items...)}
+	tr.Update(scenes[0], 1920, 1080)
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if d := tr.Update(scenes[(i+1)%2], 1920, 1080); d.Full || len(d.Rects) != 0 {
+			b.Fatalf("damage = %+v", d)
 		}
 	}
 }

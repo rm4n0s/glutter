@@ -89,6 +89,34 @@ func (DecorationDefaults) GetClipPath(ui.Rect, ui.TextDirection) *ui.Path {
 // Flutter: painting/decoration.dart Decoration.debugFillProperties
 func (DecorationDefaults) DebugFillProperties(*foundation.DiagnosticPropertiesBuilder) {}
 
+// DecorationsEqual is Dart's == of two decorations, which Go's == of two interface
+// values is not: that compares the pointers, and a build makes a new decoration each
+// time. A BoxDecoration, a ShapeDecoration and a FlutterLogoDecoration are compared by
+// their Equal; a decoration of another type that has a method Equal(Decoration) bool is
+// asked; any other is equal only to itself, as a Dart class without operator == is. Two
+// nil decorations are equal.
+//
+// Flutter: no counterpart (Decoration.operator ==)
+func DecorationsEqual(a, b Decoration) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	switch x := a.(type) {
+	case *BoxDecoration:
+		y, ok := b.(*BoxDecoration)
+		return ok && x.Equal(y)
+	case *ShapeDecoration:
+		y, ok := b.(*ShapeDecoration)
+		return ok && x.Equal(y)
+	case *FlutterLogoDecoration:
+		y, ok := b.(*FlutterLogoDecoration)
+		return ok && x.Equal(y)
+	case interface{ Equal(other Decoration) bool }:
+		return x.Equal(b)
+	}
+	return foundation.ValuesEqual(a, b)
+}
+
 // DecorationLerp linearly interpolates between two decorations. Either may be
 // nil.
 //

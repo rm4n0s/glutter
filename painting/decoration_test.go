@@ -409,3 +409,69 @@ func TestImageConfiguration(t *testing.T) {
 		t.Errorf("CopyWith = %v", copied)
 	}
 }
+
+// namedDecoration is a decoration of a type that painting does not know, with an equality
+// of its own; anyDecoration is one without.
+type namedDecoration struct {
+	DecorationDefaults
+	name string
+}
+
+func (*namedDecoration) CreateBoxPainter(func()) BoxPainter { return nil }
+func (d *namedDecoration) Equal(other Decoration) bool {
+	o, ok := other.(*namedDecoration)
+	return ok && o.name == d.name
+}
+
+type anyDecoration struct {
+	DecorationDefaults
+	// size keeps two of them at two addresses: Go may give every value of no size one.
+	size int
+}
+
+func (*anyDecoration) CreateBoxPainter(func()) BoxPainter { return nil }
+
+// TestDecorationsEqual checks Dart's == of two decorations: by value for the types that
+// have an equality, by identity for the others.
+func TestDecorationsEqual(t *testing.T) {
+	red := foundation.Some(ui.NewColor(0xFFFF0000))
+	box := func(c foundation.Opt[ui.Color]) *BoxDecoration { return NewBoxDecoration(BoxDecorationOpts{Color: c}) }
+	shape := func(c foundation.Opt[ui.Color]) *ShapeDecoration {
+		return NewShapeDecoration(NewCircleBorder(), ShapeDecorationOpts{Color: c})
+	}
+	one := &anyDecoration{}
+	var noBox *BoxDecoration
+	tests := []struct {
+		name string
+		a, b Decoration
+		want bool
+	}{
+		{"none and none", nil, nil, true},
+		{"none and one", nil, box(red), false},
+		{"one and none", box(red), nil, false},
+		{"two equal box decorations", box(red), box(red), true},
+		{"two box decorations of other colors", box(red), box(foundation.Some(ui.NewColor(0xFF00FF00))), false},
+		{"a box decoration with a border and one without", box(red), NewBoxDecoration(BoxDecorationOpts{Color: red, Border: NewBorderAll()}), false},
+		{"two equal shape decorations", shape(red), shape(red), true},
+		{"two shape decorations of other colors", shape(red), shape(foundation.None[ui.Color]()), false},
+		{"a box and a shape decoration", box(red), shape(red), false},
+		{"two equal logo decorations", NewFlutterLogoDecoration(), NewFlutterLogoDecoration(), true},
+		{"a type with an equality, equal", &namedDecoration{name: "a"}, &namedDecoration{name: "a"}, true},
+		{"a type with an equality, different", &namedDecoration{name: "a"}, &namedDecoration{name: "b"}, false},
+		{"a type with an equality and a box decoration", &namedDecoration{name: "a"}, box(red), false},
+		{"a type without an equality and itself", one, one, true},
+		{"two of a type without an equality", one, &anyDecoration{}, false},
+		{"a nil box decoration and none", noBox, nil, false},
+		{"two nil box decorations", noBox, noBox, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DecorationsEqual(tt.a, tt.b); got != tt.want {
+				t.Errorf("DecorationsEqual = %v, want %v", got, tt.want)
+			}
+			if got := DecorationsEqual(tt.b, tt.a); got != tt.want {
+				t.Errorf("DecorationsEqual the other way = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

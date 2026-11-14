@@ -333,6 +333,41 @@ func TestRenderDecoratedBoxPaints(t *testing.T) {
 	}
 }
 
+// TestRenderDecoratedBoxKeepsAnEqualDecoration checks that a decoration that equals the one
+// the box has is not taken and paints nothing (a build makes a new decoration each time), as
+// Flutter's setter, which compares with the decoration's ==, and that another one is taken
+// and painted.
+func TestRenderDecoratedBoxKeepsAnEqualDecoration(t *testing.T) {
+	red := func() painting.Decoration {
+		return painting.NewBoxDecoration(painting.BoxDecorationOpts{Color: foundation.Some(ui.NewColor(0xFFFF0000))})
+	}
+	blue := painting.NewBoxDecoration(painting.BoxDecorationOpts{Color: foundation.Some(ui.NewColor(0xFF0000FF))})
+	tests := []struct {
+		name      string
+		next      painting.Decoration
+		wantTaken bool
+	}{
+		{"an equal decoration made again", red(), false},
+		{"another decoration", blue, true},
+		{"no decoration", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t)
+			first := red()
+			box := rendering.NewRenderDecoratedBox(first, nil)
+			layout(t, h, box, atPhase(withConstraints(tight(20, 20)), phaseComposite))
+			box.SetDecoration(tt.next)
+			if taken := box.Decoration() != first; taken != tt.wantTaken {
+				t.Errorf("the decoration was taken = %v, want %v", taken, tt.wantTaken)
+			}
+			if foundation.DebugMode && box.DebugNeedsPaint() != tt.wantTaken {
+				t.Errorf("needs paint = %v, want %v", box.DebugNeedsPaint(), tt.wantTaken)
+			}
+		})
+	}
+}
+
 func TestRenderDecoratedBoxHitTestSelf(t *testing.T) {
 	box := rendering.NewRenderDecoratedBox(painting.NewBoxDecoration(painting.BoxDecorationOpts{Shape: painting.BoxShapeCircle}), nil)
 	layout(t, newHarness(t), box, withConstraints(tight(100, 100)))

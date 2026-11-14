@@ -73,6 +73,12 @@ type paragraph struct {
 	lines         []*line
 	exceededLines bool
 	laidOut       bool
+	// paintSig is the signature of what the paragraph draws as it is laid out
+	// (PaintSignature), kept until the next Layout; paintSigOK says that everything it
+	// draws has one, and paintSigMade that the two are those of this layout.
+	paintSig     uint64
+	paintSigOK   bool
+	paintSigMade bool
 }
 
 var _ ui.ParagraphLayout = (*paragraph)(nil)

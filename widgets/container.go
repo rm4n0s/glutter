@@ -251,7 +251,7 @@ func (c *decorationClipper) GetClip(size ui.Size) *ui.Path {
 
 func (c *decorationClipper) ShouldReclip(old rendering.CustomClipper[*ui.Path]) bool {
 	o := old.(*decorationClipper)
-	return o.decoration != c.decoration || o.textDirection != c.textDirection
+	return !painting.DecorationsEqual(o.decoration, c.decoration) || o.textDirection != c.textDirection
 }
 
 // The tags of the errors that this file makes (rm4n0s/errors, R5).

@@ -107,6 +107,7 @@ func (p *paragraph) Layout(c ui.ParagraphConstraints) {
 	p.verticalMetrics()
 	p.align()
 	p.laidOut = true
+	p.paintSigMade = false
 }
 
 // extendLastLine keeps the first maxLines of the ranges, and, when the last of them is ellipsized,

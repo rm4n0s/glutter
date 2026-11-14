@@ -10,6 +10,7 @@ import (
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gluttertest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
+	"github.com/rm4n0s/glutter/internal/gpu/opsig"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/material/fonts"
@@ -258,6 +259,74 @@ func TestDetachReusesCopies(t *testing.T) {
 	d.Detach(scene(other))
 	if d3 := d.Detach(scene(textPic)); picOf(d3, 0) == picOf(d1, 0) {
 		t.Error("the detacher kept a copy of a picture that the last scene did not have")
+	}
+}
+
+// drawsOnly is a paragraph layout that can draw itself and knows nothing else: not its
+// signature, which the detacher then makes from the draws it copies.
+type drawsOnly struct {
+	ui.ParagraphLayout
+	draws []ui.ParagraphDraw
+}
+
+func (d *drawsOnly) Width() float64  { return 100 }
+func (d *drawsOnly) Height() float64 { return 20 }
+func (d *drawsOnly) PaintParagraph(emit func(ui.ParagraphDraw)) {
+	for _, draw := range d.draws {
+		emit(draw)
+	}
+}
+
+// TestDetachedParagraphsHaveTheSignatureOfTheirSource checks that the frozen copy of a
+// paragraph has the signature of the paragraph (opsig), so that the damage tracker sees
+// that a picture that was detached again, whose copies are all new objects, draws what it
+// drew: the text engine's paragraphs, which know their signature, and a paragraph that
+// does not.
+func TestDetachedParagraphsHaveTheSignatureOfTheirSource(t *testing.T) {
+	_, live := pumpFrame(t, scaffoldApp(textBody()))
+	sources := paragraphsOf(live.Root())
+	// Two detachers, so that the second copy is not the first one found again.
+	first := paragraphsOf(offscreen.NewDetacher().Detach(live).Root())
+	second := paragraphsOf(offscreen.NewDetacher().Detach(live).Root())
+	if len(sources) < 10 || len(first) != len(sources) || len(second) != len(sources) {
+		t.Fatalf("%d paragraphs, %d and %d copies", len(sources), len(first), len(second))
+	}
+	seen := map[uint64]bool{}
+	for i, src := range sources {
+		want, ok := opsig.Paragraph(src)
+		if !ok {
+			t.Fatalf("paragraph %d has no signature", i)
+		}
+		seen[want] = true
+		for _, c := range []*ui.Paragraph{first[i], second[i]} {
+			if c == src {
+				t.Fatalf("paragraph %d was not copied", i)
+			}
+			if got, ok := opsig.Paragraph(c); !ok || got != want {
+				t.Errorf("the copy of paragraph %d has the signature %x, %v; the paragraph has %x", i, got, ok, want)
+			}
+		}
+	}
+	if len(seen) < 10 {
+		t.Errorf("the paragraphs have %d signatures, want one for each text", len(seen))
+	}
+
+	glyph := gputest.PictureOf(gputest.StripesAndDisc)
+	plain := ui.NewParagraph(&drawsOnly{draws: []ui.ParagraphDraw{
+		{Op: ui.OpDrawPicture{Picture: glyph}, Offset: ui.Offset{Dx: 3, Dy: 4}, Snap: true},
+		{Op: ui.OpDrawRect{Rect: ui.NewRectFromLTWH(0, 18, 60, 1)}},
+	}})
+	rec := ui.NewPictureRecorder()
+	ui.NewCanvas(rec).DrawParagraph(plain, ui.Offset{Dx: 10, Dy: 10})
+	b := ui.NewSceneBuilder()
+	b.AddPicture(ui.Offset{}, rec.EndRecording())
+	copies := paragraphsOf(offscreen.NewDetacher().Detach(b.Build()).Root())
+	if len(copies) != 1 || copies[0] == plain {
+		t.Fatalf("the paragraph was not copied: %d copies", len(copies))
+	}
+	want, _ := opsig.Paragraph(plain)
+	if got, ok := opsig.Paragraph(copies[0]); !ok || got != want {
+		t.Errorf("the copy of a paragraph that does not know its signature has %x, %v; its draws give %x", got, ok, want)
 	}
 }
 

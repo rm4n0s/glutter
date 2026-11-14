@@ -264,7 +264,7 @@ func (d *InkDecoration) Decoration() painting.Decoration { return d.decoration }
 //
 // Flutter: material/ink_decoration.dart InkDecoration.decoration
 func (d *InkDecoration) SetDecoration(value painting.Decoration) {
-	if foundation.ValuesEqual(value, d.decoration) {
+	if painting.DecorationsEqual(value, d.decoration) {
 		return
 	}
 	d.decoration = value

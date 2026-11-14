@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/rm4n0s/glutter/internal/gpu"
+	"github.com/rm4n0s/glutter/internal/gpu/opsig"
 	"github.com/rm4n0s/glutter/internal/gpu/textdraw"
 	"github.com/rm4n0s/glutter/ui"
 )
@@ -258,6 +259,11 @@ func (d *Detacher) paragraph(v ui.OpDrawParagraph) (ui.DisplayOp, bool) {
 		return v, false
 	}
 	f := &frozenParagraph{width: v.Paragraph.Width(), height: v.Paragraph.Height()}
+	// The copy draws what the paragraph draws (an image of it is another handle on the same
+	// pixels), so the signature of the paragraph is the copy's; a paragraph that does not
+	// know its own gets the signature of the draws as they are copied.
+	signed, known := painter.(opsig.Signed)
+	var draws opsig.Draws
 	painter.PaintParagraph(func(draw ui.ParagraphDraw) {
 		if o, changed := d.op(draw.Op); changed {
 			draw.Op = o
@@ -265,9 +271,17 @@ func (d *Detacher) paragraph(v ui.OpDrawParagraph) (ui.DisplayOp, bool) {
 		if draw.Matrix != nil {
 			draw.Matrix = draw.Matrix.Clone()
 		}
+		if !known {
+			draws.Add(draw)
+		}
 		f.add(draw)
 	})
 	f.finish()
+	if known {
+		f.sig, f.sigOK = signed.PaintSignature()
+	} else {
+		f.sig, f.sigOK = draws.Sum()
+	}
 	v.Paragraph = ui.NewParagraph(f)
 	return v, true
 }
@@ -289,6 +303,11 @@ type frozenParagraph struct {
 	// bounds is the box of all the draws, in the paragraph's coordinates; infinite when a draw
 	// reaches further than its geometry (a blur) or cannot be bounded.
 	bounds ui.Rect
+	// sig is the signature of the draws (opsig.Signed), and sigOK says that every draw has
+	// one: two frozen paragraphs that draw the same have the same, so that the damage
+	// tracker sees that a picture that was detached again draws what it drew.
+	sig   uint64
+	sigOK bool
 }
 
 // drawGroup is the draws up to end (and from the end of the group before it) with the rows,
@@ -302,6 +321,7 @@ var (
 	_ ui.ParagraphPainter    = (*frozenParagraph)(nil)
 	_ textdraw.RowPainter    = (*frozenParagraph)(nil)
 	_ textdraw.BoundsPainter = (*frozenParagraph)(nil)
+	_ opsig.Signed           = (*frozenParagraph)(nil)
 )
 
 // groupSize is how many draws make a group.
@@ -399,6 +419,9 @@ func (f *frozenParagraph) PaintParagraphRows(top, bottom float64, emit func(ui.P
 		start = g.end
 	}
 }
+
+// PaintSignature is the signature of what the paragraph drew when it was detached.
+func (f *frozenParagraph) PaintSignature() (uint64, bool) { return f.sig, f.sigOK }
 
 // PaintBounds is the box of everything the paragraph draws.
 func (f *frozenParagraph) PaintBounds() ui.Rect {
