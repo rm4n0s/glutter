@@ -885,3 +885,17 @@ The first row's wall time of 1.6 s is the first launch of an app on a Simulator 
 | Resident memory at the end of the 10 s window (`ps`), counter and gallery | 193 MB and 227 MB | 139 MB and 159 MB |
 
 `debug.FreeOSMemory()` after the start was tried and takes 5 MB more (73 MB): not done. What is left is the system's: the frameworks Metal and AppKit map, the window's surfaces (`IOSurface`, `IOAccelerator`) and about 15 MB of `malloc`. The 60 MB target of SPEC §15 stays the Linux laptop's; for macOS the proposed 250 MB and 300 MB are met by a wide margin. On the iOS Simulator the animating app went from 195 MB to 183 MB (`TestAnimatingAppMemoryStaysFlat`, still flat: 181 to 183 MB over 60 s), and the counter, gallery and animations rows of the table above from 199, 220 and 218 MB at 3 s to 182, 218 and 200 MB (a gain of 2 to 18 MB, not 60: an iOS Simulator app carries more of the system than a macOS one, and the gallery's text is mostly Roboto, which is small). Linux, when `fontconfig` gives a variable font: not measured here.
+
+## The software renderer for the view of an app (step 45.1)
+
+Emetos draws the views of its Remote Work with `soft` on the host (`offscreen.NewView`), and measured a frame of its workbench at 1920x1080 with 1.17.2: about 80 ms and 158 MB for a typed character or a scroll, of which about 150 MB were the coverage masks of rectangular clips (`newAccum`, `accum.mask`, `clip.intersect`, `threshold`), 44% of the raster time was making them, and the garbage collector took 30% of the frame's CPU. A clip to a rectangle on whole pixels now narrows the clip's bounds and makes no mask, and a fill of such a rectangle is composited without one (SPEC §12.10); the pixels are the same.
+
+`BenchmarkRectangleClips` of `internal/gpu/soft` is a frame of that kind (four panes at 1920x1080, each a hard-edge clip layer with an anti-aliased one inside it, and 53 rows that each clip and fill two rectangles), on the Linux laptop of this file, 2026-11-14:
+
+| | Before (1.17.2) | After |
+|---|---|---|
+| Time of the frame | 100.9 ms | 4.3 ms |
+| Memory allocated by the frame | 149.7 MB | 57 KB |
+| Allocations | 9,644 | 667 |
+
+Emetos's own trial of the clip part alone, in a copy of 1.17.2, took its frames from 80 ms to 42 ms; the fill of rectangles (`fillPolys`, `compositeRow`) was 65% of what was left.
