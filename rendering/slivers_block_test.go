@@ -128,6 +128,9 @@ func (s *viewportOffsetSpy) JumpTo(float64) {}
 func (s *viewportOffsetSpy) AnimateTo(float64, time.Duration, animation.Curve) *scheduler.TickerFuture {
 	return scheduler.NewTickerFutureComplete()
 }
+func (s *viewportOffsetSpy) MoveTo(to float64, opts ...rendering.ViewportOffsetMoveToOpts) *scheduler.TickerFuture {
+	return rendering.ViewportOffsetMoveTo(s, to, opts...)
+}
 func (s *viewportOffsetSpy) UserScrollDirection() rendering.ScrollDirection {
 	return rendering.ScrollDirectionIdle
 }

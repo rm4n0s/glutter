@@ -4839,3 +4839,14 @@ The owner passed on an entry of Emetos's list of Glutter issues on 2026-11-12, f
 **Tests:** `rendering.TestSemanticsNodeInEveryBuildMode`; `gluttertest.TestSemanticsLabelFinders` and the tests of `widgets`, `material`, `cupertino`, `svg`, `viewport3d` and `rendering` that use the finders or the node, now in both modes.
 **Proof:** none. **Manual checks:** none.
 
+## M44: Fixes found by Fishball (1.17.2)
+
+The owner passed on the one entry left in Fishball's list of Glutter issues on 2026-11-14 ("The first click beside a focused text field in a dialog is lost"), still there in 1.17.0.
+
+### 44.1 The first tap beside a focused field in a scroll view
+**Goal:** a button beside a focused text field, in a scroll view that cannot scroll (the content of Fishball's save points dialog), runs on the first tap, also right after a key or the focus.
+**Why:** each edit and focus shows the caret with its scroll padding (20 pixels) and an animation of 100 ms (`scheduleShowCaretOnScreen`). Flutter's `RenderViewportBase.showInViewport` calls `offset.moveTo`, which `ScrollPosition.moveTo` overrides to clamp the target to the scroll extents, so a view that cannot scroll does not move. Glutter's `ViewportOffset` had no `MoveTo`, and `RenderViewportShowInViewport` called the base `ViewportOffsetMoveTo`, which does not clamp: the view animated toward -20, and a scrollable ignores pointers while a driven activity runs (as in Flutter), so the tap was lost. A tap outside the scroll view (the dialog's actions) or in a page with no scroll view worked, which is what Fishball saw.
+**Read:** SPEC §12.1, §12.10; `rendering/viewport_offset.go`, `rendering/viewport.go` (`RenderViewportShowInViewport`), `widgets/scroll_position.go` (`MoveTo`, `EnsureVisible`), `widgets/editable_text_input.go` (`scheduleShowCaretOnScreen`); Flutter's `rendering/viewport.dart` `showInViewport`, `rendering/viewport_offset.dart` `moveTo`, `widgets/scroll_position.dart` `moveTo`.
+**Tasks:** (done in the step) `MoveTo` is a method of `rendering.ViewportOffset` (Flutter's `moveTo`); the fixed offset implements it with `ViewportOffsetMoveTo`, a scroll position with its clamping `MoveTo`; `RenderViewportShowInViewport` calls the offset's `MoveTo`.
+**Tests:** `widgets.TestShowOnScreenClampsToTheScrollExtents` (a `SingleChildScrollView` and a `ListView`, content that fits and that overflows, a rect past each end; four of the six rows failed before); `material.TestTheFirstTapBesideAFocusedFieldInAScrollingDialog` (Fishball's layout; failed before); Fishball's `TestASavePointIsMadeAndLoaded` with Save beside the field, against this branch.
+**Proof:** none. **Manual checks:** none.

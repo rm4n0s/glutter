@@ -1009,7 +1009,11 @@ func RenderViewportShowInViewport(descendant RenderObject, rect foundation.Opt[u
 		r := rect.OrElse(descendant.PaintBounds())
 		return foundation.Some(transform.TransformRect(r))
 	}
-	ViewportOffsetMoveTo(offset, targetOffset.Offset, ViewportOffsetMoveToOpts{Duration: foundation.Some(opts.Duration), Curve: opts.Curve})
+	// The offset's own MoveTo: a scroll position clamps the target to its scroll
+	// extents, so a rect that reaches past them (a caret with its scroll padding,
+	// in a view that cannot scroll) starts no animation, which would make the
+	// scrollable ignore pointers for its duration.
+	offset.MoveTo(targetOffset.Offset, ViewportOffsetMoveToOpts{Duration: foundation.Some(opts.Duration), Curve: opts.Curve})
 	return foundation.Some(targetOffset.Rect)
 }
 

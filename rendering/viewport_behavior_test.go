@@ -292,6 +292,9 @@ func (o *implicitScrollOffset) AnimateTo(to float64, _ time.Duration, _ animatio
 	o.NotifyListeners()
 	return scheduler.NewTickerFutureComplete()
 }
+func (o *implicitScrollOffset) MoveTo(to float64, opts ...rendering.ViewportOffsetMoveToOpts) *scheduler.TickerFuture {
+	return rendering.ViewportOffsetMoveTo(o, to, opts...)
+}
 
 func TestViewportShowOnScreen(t *testing.T) {
 	boxes := sizedBoxes(20, 300, 100)

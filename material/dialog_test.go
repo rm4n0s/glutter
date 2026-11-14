@@ -15,6 +15,7 @@ import (
 	"github.com/rm4n0s/glutter/gluttertest"
 	. "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/painting"
+	"github.com/rm4n0s/glutter/rendering"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -382,4 +383,56 @@ func TestDialogErrors(t *testing.T) {
 		})
 		wantRoute(t, err, "ShowDialogContextInactive")
 	})
+}
+
+// TestTheFirstTapBesideAFocusedFieldInAScrollingDialog checks Fishball's save
+// points dialog: a button in a Row beside a text field, in the scroll view of an
+// AlertDialog's content, runs on the first tap right after the field got text.
+// The caret, shown with its scroll padding, asked the scroll view (which cannot
+// scroll) to animate past its top; the scrollable ignored pointers while it did,
+// and the tap was lost. Flutter's ScrollPosition.moveTo clamps the target, so
+// nothing animates.
+func TestTheFirstTapBesideAFocusedFieldInAScrollingDialog(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		scroll bool
+		settle bool
+	}{
+		{name: "in a scroll view, tapped at once", scroll: true},
+		{name: "in a scroll view, tapped after a settle", scroll: true, settle: true},
+		{name: "in a column, tapped at once"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pressed := 0
+			ts, _ := pumpDialogApp(t, nil, func(bc widgets.BuildContext) <-chan any {
+				return ShowDialog[any](bc, func(bc widgets.BuildContext) widgets.Widget {
+					deco := NewInputDecoration(InputDecorationOpts{LabelText: foundation.Some("Name"), Border: NewOutlineInputBorder(), IsDense: foundation.Some(true)})
+					var content widgets.Widget = widgets.NewColumn([]widgets.Widget{
+						widgets.NewRow([]widgets.Widget{
+							widgets.NewExpanded(NewTextField(TextFieldOpts{Autofocus: true, Decoration: &deco})),
+							NewFilledButton(func() { pressed++ }, widgets.NewText("SAVE")),
+						}),
+						widgets.NewText("No save point yet."),
+					}, widgets.ColumnOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStretch, MainAxisSize: rendering.MainAxisSizeMin})
+					if tt.scroll {
+						content = widgets.NewSingleChildScrollView(content)
+					}
+					return NewAlertDialog(AlertDialogOpts{Title: widgets.NewText("Save points"),
+						Content: widgets.NewSizedBox(content, widgets.SizedBoxOpts{Width: foundation.Some(460.0)}),
+						Actions: []widgets.Widget{NewTextButton(func() {}, widgets.NewText("Close"))}})
+				})
+			})
+			ts.Tap(gluttertest.ByText("OPEN"))
+			ts.PumpAndSettle()
+			ts.EnterText(gluttertest.ByType[*TextField](), "by the fire")
+			if tt.settle {
+				ts.PumpAndSettle()
+			}
+			ts.Tap(gluttertest.ByText("SAVE"))
+			ts.PumpAndSettle()
+			if pressed != 1 {
+				t.Errorf("the button ran %d times after one tap, want 1", pressed)
+			}
+		})
+	}
 }

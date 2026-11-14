@@ -108,6 +108,13 @@ type ViewportOffset interface {
 	//
 	// Flutter: rendering/viewport_offset.dart ViewportOffset.animateTo
 	AnimateTo(to float64, duration time.Duration, curve animation.Curve) *scheduler.TickerFuture
+	// MoveTo animates Pixels to the value, or jumps when there is no duration. A
+	// scroll position clamps the value to its scroll extents unless Clamp is
+	// false; an offset with nothing to add implements it with
+	// ViewportOffsetMoveTo.
+	//
+	// Flutter: rendering/viewport_offset.dart ViewportOffset.moveTo
+	MoveTo(to float64, opts ...ViewportOffsetMoveToOpts) *scheduler.TickerFuture
 	// UserScrollDirection is the direction in which the user is scrolling.
 	//
 	// Flutter: rendering/viewport_offset.dart ViewportOffset.userScrollDirection
@@ -133,7 +140,9 @@ type ViewportOffsetMoveToOpts struct {
 }
 
 // ViewportOffsetMoveTo animates the offset to the value, or jumps if there is
-// no duration.
+// no duration: the MoveTo of ViewportOffset itself, which an implementation
+// calls from its own MoveTo (a scroll position clamps the value first). Code
+// that moves an offset calls the offset's MoveTo, not this function.
 //
 // Flutter: rendering/viewport_offset.dart ViewportOffset.moveTo
 func ViewportOffsetMoveTo(offset ViewportOffset, to float64, opts ...ViewportOffsetMoveToOpts) *scheduler.TickerFuture {
@@ -190,6 +199,9 @@ func (o *fixedViewportOffset) CorrectBy(correction float64)             { o.pixe
 func (o *fixedViewportOffset) JumpTo(float64)                           {}
 func (o *fixedViewportOffset) AnimateTo(float64, time.Duration, animation.Curve) *scheduler.TickerFuture {
 	return scheduler.NewTickerFutureComplete()
+}
+func (o *fixedViewportOffset) MoveTo(to float64, opts ...ViewportOffsetMoveToOpts) *scheduler.TickerFuture {
+	return ViewportOffsetMoveTo(o, to, opts...)
 }
 
 // String is the identity of the offset and its pixels.
