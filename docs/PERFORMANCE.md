@@ -899,3 +899,15 @@ Emetos draws the views of its Remote Work with `soft` on the host (`offscreen.Ne
 | Allocations | 9,644 | 667 |
 
 Emetos's own trial of the clip part alone, in a copy of 1.17.2, took its frames from 80 ms to 42 ms; the fill of rectangles (`fillPolys`, `compositeRow`) was 65% of what was left.
+
+## The damage of a layer that was painted again (step 45.2)
+
+Before this step a layer whose picture was recorded again was redrawn whole, whatever it drew: with `soft` (an `offscreen` view, a window without a GPU) a typed character or a rebuild above a `LayoutBuilder` cost the layer. The damage tracker now compares what the pictures draw, operation by operation (SPEC §12.10), so the redrawn pixels are those of the operations that differ. `offscreen.TestAPictureRecordedAgainDamagesWhatItChanges` (rows of text in a `Container` with a decoration, 480x360, through the detacher and a `Surface`):
+
+| Change | Pixels redrawn before | After |
+|---|---|---|
+| A rebuild that changes nothing | 172,800 (everything) | 0 (and nothing is painted again without a `LayoutBuilder`) |
+| A rebuild of a `LayoutBuilder` that changes nothing | 172,800 | 0 |
+| A row whose text changed | 172,800 | the tiles of the row, at most 61,440 |
+
+What it costs: the tracker hashes each operation of a picture once, when it first sees the picture, and in every frame it puts an item for each operation of each picture (at most 768 for a picture, which is folded into a grid past 512 operations) into the tiles it reaches, where it put one item for each picture. `BenchmarkDamageOfKeptPictures` of `internal/gpu` (an update of 40 kept pictures of 31 operations each at 1920x1080, 2026-11-14, the Linux laptop of this file while other tests ran): 12 µs before, 65 µs after, with 2.3 KB allocated instead of 4.6 KB.
