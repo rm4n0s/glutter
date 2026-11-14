@@ -65,33 +65,33 @@ func TestPixelRect(t *testing.T) {
 	}
 }
 
-// sameClip says that two clips let the same through: both empty, or the same bounds and
-// the same coverage.
-func sameClip(a, b clip) error {
+// sameClip says whether two clips let the same through (both empty, or the same bounds and
+// the same coverage): it returns what differs, or nothing.
+func sameClip(a, b clip) string {
 	if a.empty() || b.empty() {
 		if a.empty() != b.empty() {
-			return fmt.Errorf("empty = %v and %v", a.empty(), b.empty())
+			return fmt.Sprintf("empty = %v and %v", a.empty(), b.empty())
 		}
-		return nil
+		return ""
 	}
 	if a.bounds != b.bounds {
-		return fmt.Errorf("bounds = %v and %v", a.bounds, b.bounds)
+		return fmt.Sprintf("bounds = %v and %v", a.bounds, b.bounds)
 	}
 	if (a.mask == nil) != (b.mask == nil) {
-		return fmt.Errorf("has a mask = %v and %v", a.mask != nil, b.mask != nil)
+		return fmt.Sprintf("has a mask = %v and %v", a.mask != nil, b.mask != nil)
 	}
 	if a.mask == nil {
-		return nil
+		return ""
 	}
 	if a.mask.Rect != b.mask.Rect {
-		return fmt.Errorf("mask rect = %v and %v", a.mask.Rect, b.mask.Rect)
+		return fmt.Sprintf("mask rect = %v and %v", a.mask.Rect, b.mask.Rect)
 	}
 	for i, v := range a.mask.Cov {
 		if v != b.mask.Cov[i] {
-			return fmt.Errorf("coverage %d = %v and %v", i, v, b.mask.Cov[i])
+			return fmt.Sprintf("coverage %d = %v and %v", i, v, b.mask.Cov[i])
 		}
 	}
-	return nil
+	return ""
 }
 
 // randomRectCase returns a transform that scales along the axes and translates, and a
@@ -152,8 +152,8 @@ func TestRectClipIsTheClipOfTheRasterizedRectangle(t *testing.T) {
 						}
 						got := rectClip(st, r, antiAlias)
 						want := shapeClip(st, rectPath(r), antiAlias, false)
-						if err := sameClip(got, want); err != nil {
-							t.Fatalf("case %d: rect %v under %v: %v", i, r, m.Storage(), err)
+						if diff := sameClip(got, want); diff != "" {
+							t.Fatalf("case %d: rect %v under %v: %s", i, r, m.Storage(), diff)
 						}
 						if isWhole && prior.clip.mask == nil && got.mask != nil {
 							t.Fatalf("case %d: a rectangle on whole pixels made a mask", i)
