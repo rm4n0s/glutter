@@ -68,7 +68,7 @@ func TestAPictureRecordedAgainDamagesWhatItChanges(t *testing.T) {
 				// their size when a text grows.
 				return widgets.NewColumn(lines, widgets.ColumnOpts{CrossAxisAlignment: rendering.CrossAxisAlignmentStretch})
 			}
-			var body widgets.Widget = column()
+			body := column()
 			if layoutBuilder {
 				body = widgets.NewLayoutBuilder(func(widgets.BuildContext, rendering.BoxConstraints) widgets.Widget { return column() })
 			}

@@ -156,8 +156,9 @@ func TestNewNotificationHasAnOpenActionThatBringsTheWindowBack(t *testing.T) {
 			if !reflect.DeepEqual(ids, []string{"default", "open"}) {
 				t.Errorf("actions = %v", ids)
 			}
-			ts.Pump()
-			ts.Element(gluttertest.ByText("Notification shown."))
+			// The status is set by the goroutine that showed the notification, after the
+			// desktop has it.
+			fd.WaitFor("the status", func() bool { ts.Pump(); return ts.Exists(gluttertest.ByText("Notification shown.")) })
 
 			ts.Dispatcher().RequestClose(ts.View.ViewID())
 			fd.InvokeNotificationAction(n.ID, action)

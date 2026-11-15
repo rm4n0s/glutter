@@ -439,7 +439,7 @@ func TestDecorationsEqual(t *testing.T) {
 	shape := func(c foundation.Opt[ui.Color]) *ShapeDecoration {
 		return NewShapeDecoration(NewCircleBorder(), ShapeDecorationOpts{Color: c})
 	}
-	one := &anyDecoration{}
+	one := &anyDecoration{size: 1}
 	var noBox *BoxDecoration
 	tests := []struct {
 		name string
@@ -460,7 +460,7 @@ func TestDecorationsEqual(t *testing.T) {
 		{"a type with an equality, different", &namedDecoration{name: "a"}, &namedDecoration{name: "b"}, false},
 		{"a type with an equality and a box decoration", &namedDecoration{name: "a"}, box(red), false},
 		{"a type without an equality and itself", one, one, true},
-		{"two of a type without an equality", one, &anyDecoration{}, false},
+		{"two of a type without an equality", one, &anyDecoration{size: 2}, false},
 		{"a nil box decoration and none", noBox, nil, false},
 		{"two nil box decorations", noBox, noBox, true},
 	}
