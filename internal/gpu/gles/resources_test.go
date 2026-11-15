@@ -2,6 +2,7 @@ package gles
 
 import (
 	"image"
+	"reflect"
 	"testing"
 
 	"github.com/rm4n0s/errors"
@@ -161,35 +162,134 @@ func TestAtlasPagesAreTexturesOfTheGPU(t *testing.T) {
 	}
 }
 
-func TestAtlasFullIsAnError(t *testing.T) {
-	res, _, _ := newTestResources(t)
-	res.masks.SetAtlas(gpu.NewAtlas[gpu.MaskKey](256, 1)) // four slots of 128 or one of 256 in one page
-	many := func(c *ui.Canvas) {
-		// Each of these needs the whole 256 pixel page.
-		for i := 0; i < 2; i++ {
+// wholePages draws n paths that each need a whole page of an atlas of 256 pixel pages (they
+// are larger than the surface, and each has a size of its own), in the order of from, and
+// after them a rectangle that needs no atlas.
+func wholePages(from, n int) func(c *ui.Canvas) {
+	return func(c *ui.Canvas) {
+		for i := from; i < from+n; i++ {
 			p := ui.NewPath()
 			p.AddRect(ui.NewRectFromLTWH(-20, -20, 400+float64(i), 400))
 			c.DrawPath(p, solidPaint(0xFF000000))
 		}
+		c.DrawRect(ui.NewRectFromLTWH(10, 10, 20, 20), solidPaint(0xFFFF0000))
 	}
-	res.beginFrame()
-	_, err := buildWith(t, res, false, many)
-	appErr, ok := errors.FromError(err)
-	if !ok || appErr.Tag != "AtlasFull" {
-		t.Fatalf("error = %v, want AtlasFull", err)
+}
+
+// TestAFullAtlasNeverFailsTheFrame checks a frame whose shapes need more tiles than the atlas
+// may have (Fishball's crash of 2026-11-15: a frame of many shadows returned AtlasFull, and
+// the app stopped): the shapes that do not fit are left out and counted, the rest is drawn,
+// and the frame has no error, whether the renderer skips what it cannot draw or not.
+func TestAFullAtlasNeverFailsTheFrame(t *testing.T) {
+	tests := []struct {
+		name        string
+		skip        bool
+		kept, limit int
+		shapes      int
+		drawn, full int // the shapes that are drawn and the ones left out
+	}{
+		{"strict, an atlas that does not grow", false, 1, 0, 3, 1, 2},
+		{"skipping, an atlas that does not grow", true, 1, 0, 3, 1, 2},
+		{"strict, an atlas that grows to its frame limit", false, 1, 3, 5, 3, 2},
+		{"skipping, an atlas that grows to its frame limit", true, 1, 3, 5, 3, 2},
+		{"strict, a frame that fits the frame limit", false, 1, 3, 3, 3, 0},
 	}
-	// With skipping it is an unsupported feature.
-	res.beginFrame()
-	b, err := buildWith(t, res, true, many)
-	if err != nil {
-		t.Fatal(err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, _, _ := newTestResources(t)
+			res.masks.SetAtlas(gpu.NewAtlas[gpu.MaskKey](256, tt.kept).SetFrameLimit(tt.limit))
+			res.beginFrame()
+			b, err := buildWith(t, res, tt.skip, wholePages(0, tt.shapes))
+			res.endFrame()
+			if err != nil {
+				t.Fatalf("the frame failed: %v", err)
+			}
+			st := b.stats
+			if st.AtlasFull != tt.full || st.Skipped != tt.full || st.Drawn != tt.drawn+1 || st.Commands != tt.shapes+1 {
+				t.Errorf("stats %+v, want %d shapes left out and %d commands drawn", st, tt.full, tt.drawn+1)
+			}
+			var want []string
+			if tt.full > 0 {
+				want = []string{"coverage atlas full"}
+			}
+			if !reflect.DeepEqual(st.Unsupported, want) {
+				t.Errorf("unsupported = %v, want %v", st.Unsupported, want)
+			}
+			// The tiles of the shapes that fit, and the rectangle after the ones that did not.
+			if b.frame.items(pipeMask) != tt.drawn || b.frame.items(pipeShape) != 1 {
+				t.Errorf("%d tiles and %d shapes, want %d and 1", b.frame.items(pipeMask), b.frame.items(pipeShape), tt.drawn)
+			}
+			// The next frame draws the same again.
+			res.beginFrame()
+			b, err = buildWith(t, res, tt.skip, wholePages(0, tt.shapes))
+			res.endFrame()
+			if err != nil || b.stats.AtlasFull != tt.full || b.frame.items(pipeMask) != tt.drawn {
+				t.Errorf("the next frame: err %v, stats %+v", err, b.stats)
+			}
+		})
 	}
-	found := false
-	for _, u := range b.stats.Unsupported {
-		found = found || u == "coverage atlas full"
+}
+
+// TestAtlasPagesOfAFrameAreFreedAfterIt checks the textures of the pages: a frame that needs
+// more pages than the atlas keeps gets a texture for each, the frame that no longer does gives
+// them back to the device, and a page made later has a texture again.
+func TestAtlasPagesOfAFrameAreFreedAfterIt(t *testing.T) {
+	res, d, _ := newTestResources(t)
+	res.masks.SetAtlas(gpu.NewAtlas[gpu.MaskKey](256, 1).SetFrameLimit(4))
+	inUse := func() int { st := d.Stats(); return st.Textures - st.FreeTextures }
+	base := inUse()
+	frames := []struct {
+		name      string
+		from, n   int
+		pages     []bool // which indices have a texture after the frame
+		raster    int    // the tiles the frame rasterized
+		maskTiles int
+	}{
+		{"four shapes", 0, 4, []bool{true, true, true, true}, 4, 4},
+		{"the same four", 0, 4, []bool{true, true, true, true}, 0, 4},
+		{"the first alone", 0, 1, []bool{true, false, false, false}, 0, 1},
+		{"the first two", 0, 2, []bool{true, true, false, false}, 1, 2},
+		{"two others: the tiles of the frame before give way first", 4, 2, []bool{true, true, false, false}, 2, 2},
+		{"nothing: back to the page the atlas keeps", 0, 0, []bool{true, false, false, false}, 0, 0},
 	}
-	if !found {
-		t.Errorf("unsupported = %v", b.stats.Unsupported)
+	for _, fr := range frames {
+		before := res.masks.Rasterized
+		res.beginFrame()
+		b, err := buildWith(t, res, false, wholePages(fr.from, fr.n))
+		if err != nil {
+			t.Fatalf("%s: %v", fr.name, err)
+		}
+		// Every tile of the frame is on a page that has its texture, until the frame ends.
+		if b.stats.AtlasFull != 0 || b.frame.items(pipeMask) != fr.maskTiles {
+			t.Errorf("%s: stats %+v, %d tiles", fr.name, b.stats, b.frame.items(pipeMask))
+		}
+		for _, c := range b.frame.calls {
+			if c.pipe == pipeMask && (c.tex == nil || !c.tex.inUse) {
+				t.Errorf("%s: a tile is drawn from a page without a texture", fr.name)
+			}
+		}
+		res.endFrame()
+		var have []bool
+		n := 0
+		for _, p := range res.pages {
+			have = append(have, p != nil)
+			if p != nil {
+				n++
+			}
+		}
+		for len(have) < len(fr.pages) {
+			have = append(have, false)
+		}
+		if !reflect.DeepEqual(have, fr.pages) || res.masks.Rasterized-before != fr.raster {
+			t.Errorf("%s: pages %v, %d tiles rasterized; want %v, %d", fr.name, have, res.masks.Rasterized-before, fr.pages, fr.raster)
+		}
+		if got := inUse() - base; got != n {
+			t.Errorf("%s: %d textures in use for %d pages", fr.name, got, n)
+		}
+	}
+	res.release()
+	if d.Stats().Textures != d.Stats().FreeTextures {
+		t.Errorf("textures still in use after release: %+v", d.Stats())
 	}
 }
 

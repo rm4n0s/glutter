@@ -4,6 +4,8 @@ import (
 	"image"
 	"math"
 	"reflect"
+	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/rm4n0s/errors"
@@ -14,13 +16,23 @@ import (
 // coverage, and whose pages and uploads are recorded.
 type fakeMasks struct {
 	*MaskCache
-	pages   int
+	pages   int          // the pages that are made now
+	made    map[int]bool // by index
+	log     []string     // "new 3", "free 3", in order
 	uploads []image.Rectangle
 	areas   []image.Rectangle
 }
 
+// newFakeMasks makes a cache whose atlas keeps maxPages pages and does not grow for a frame.
 func newFakeMasks(pageSize, maxPages int) *fakeMasks {
-	f := &fakeMasks{MaskCache: NewMaskCache(pageSize, maxPages)}
+	return newGrowingFakeMasks(pageSize, maxPages, maxPages)
+}
+
+// newGrowingFakeMasks makes a cache whose atlas keeps maxPages pages and that a frame may make
+// grow to framePages. It fails the test when a page is made twice, freed twice, or written to
+// while it is not made.
+func newGrowingFakeMasks(pageSize, maxPages, framePages int) *fakeMasks {
+	f := &fakeMasks{MaskCache: NewMaskCache(pageSize, maxPages, framePages), made: map[int]bool{}}
 	f.Rasterize = func(op ui.DisplayOp, m *ui.Matrix4, area image.Rectangle) (image.Rectangle, []float32) {
 		f.areas = append(f.areas, area)
 		cov := make([]float32, area.Dx()*area.Dy())
@@ -29,10 +41,29 @@ func newFakeMasks(pageSize, maxPages int) *fakeMasks {
 		}
 		return area, cov
 	}
-	f.NewPage = func() error { f.pages++; return nil }
+	f.NewPage = func(page int) error {
+		if f.made[page] {
+			return errors.New(tagTestBadPage, "the page is made already", "page", page)
+		}
+		f.made[page] = true
+		f.pages++
+		f.log = append(f.log, "new "+strconv.Itoa(page))
+		return nil
+	}
+	f.FreePage = func(page int) {
+		if !f.made[page] {
+			panic(errors.New(tagTestBadPage, "the page is not made", "page", page))
+		}
+		delete(f.made, page)
+		f.pages--
+		f.log = append(f.log, "free "+strconv.Itoa(page))
+	}
 	f.Upload = func(page, x, y, w, h int, data []byte) error {
 		if len(data) != w*h {
 			return errors.New(tagTestBadUpload, "the data is not w x h bytes")
+		}
+		if !f.made[page] {
+			return errors.New(tagTestBadPage, "an upload to a page that is not made", "page", page)
 		}
 		f.uploads = append(f.uploads, image.Rect(x, y, x+w, y+h))
 		return nil
@@ -111,11 +142,79 @@ func TestMaskCacheEmptyCoverageAndErrors(t *testing.T) {
 	}
 
 	g := newFakeMasks(256, 1)
-	g.NewPage = func() error { return errors.New(tagTestNoPage, "no page") }
+	g.NewPage = func(int) error { return errors.New(tagTestNoPage, "no page") }
 	if _, err := g.Tiles(op, sh, m, 1, image.Rect(0, 0, 50, 50)); err == nil {
 		t.Error("a page that cannot be made did not fail")
 	} else if appErr, ok := errors.FromError(err); !ok || appErr.Tag != tagTestNoPage {
 		t.Errorf("got %v, want the error of NewPage unchanged", err)
+	}
+}
+
+// TestMaskCacheMakesAndFreesThePagesOfAFrame checks what the renderer is told about the pages:
+// a frame whose shapes need more pages than the atlas keeps has them made, by index; the frame
+// after it, which does not use them, has them freed; a page made later takes a freed index; and
+// a shape that does not fit even then fails with AtlasFull and leaves the cache as it was.
+func TestMaskCacheMakesAndFreesThePagesOfAFrame(t *testing.T) {
+	// Pages of 256 pixels hold one tile of a shape of 200 pixels each.
+	f := newGrowingFakeMasks(256, 1, 3)
+	shape := func(i int) (ui.OpDrawRect, OpShape) {
+		op := ui.OpDrawRect{Rect: ui.NewRectFromLTWH(0, 0, 200+float64(i), 200), Paint: *solidPaint(0xFF000000)}
+		sh, _ := ShapeOf(op)
+		return op, sh
+	}
+	m := ui.NewMatrix4Identity()
+	view := image.Rect(0, 0, 1000, 1000)
+	frames := []struct {
+		name   string
+		shapes []int    // the shapes drawn
+		full   []int    // the shapes that have no room
+		log    []string // the pages made and freed in the frame
+		pages  int      // the pages made after it
+		raster int      // the tiles rasterized in it
+	}{
+		{"three shapes need three pages", []int{0, 1, 2}, nil, []string{"new 0", "new 1", "new 2"}, 3, 3},
+		{"the same three keep them", []int{0, 1, 2}, nil, nil, 3, 0},
+		{"a fourth has no room", []int{0, 1, 2, 3}, []int{3}, nil, 3, 1},
+		{"one shape: the two pages over the kept one go", []int{0}, nil, []string{"free 2", "free 1"}, 1, 0},
+		{"a shape again takes the first freed index", []int{0, 2}, nil, []string{"new 1"}, 2, 1},
+		{"another takes the next", []int{0, 2, 1}, nil, []string{"new 2"}, 3, 1},
+		{"nothing drawn: back to the kept page", nil, nil, []string{"free 2", "free 1"}, 1, 0},
+	}
+	for _, fr := range frames {
+		f.log = nil
+		raster0 := f.Rasterized
+		f.BeginFrame()
+		for _, i := range fr.shapes {
+			op, sh := shape(i)
+			tiles, err := f.Tiles(op, sh, m, 0, view)
+			if slices.Contains(fr.full, i) {
+				if appErr, ok := errors.FromError(err); !ok || appErr.Tag != TagAtlasFull {
+					t.Fatalf("%s: shape %d: got %v, want AtlasFull", fr.name, i, err)
+				}
+				continue
+			}
+			if err != nil || len(tiles) != 1 {
+				t.Fatalf("%s: shape %d: %d tiles, err %v", fr.name, i, len(tiles), err)
+			}
+			if !f.made[tiles[0].Page] {
+				t.Fatalf("%s: shape %d is on the page %d, which is not made", fr.name, i, tiles[0].Page)
+			}
+		}
+		f.EndFrame()
+		if !slices.Equal(f.log, fr.log) || f.pages != fr.pages || f.Rasterized-raster0 != fr.raster {
+			t.Errorf("%s: pages %v, %d made, %d tiles rasterized; want %v, %d, %d", fr.name, f.log, f.pages, f.Rasterized-raster0, fr.log, fr.pages, fr.raster)
+		}
+		if st := f.Atlas().Stats(); st.Pages != f.pages {
+			t.Errorf("%s: the atlas has %d pages, the renderer %d", fr.name, st.Pages, f.pages)
+		}
+	}
+	// Clear forgets the pages (the renderer frees them itself): the first page is made again.
+	f.Clear()
+	f.made, f.pages, f.log = map[int]bool{}, 0, nil
+	f.BeginFrame()
+	op, sh := shape(0)
+	if _, err := f.Tiles(op, sh, m, 0, view); err != nil || !slices.Equal(f.log, []string{"new 0"}) {
+		t.Errorf("after Clear: pages %v, err %v", f.log, err)
 	}
 }
 
@@ -242,6 +341,7 @@ func TestClipShapeOutline(t *testing.T) {
 const (
 	tagTestBadUpload = "TestBadUpload"
 	tagTestNoPage    = "TestNoPage"
+	tagTestBadPage   = "TestBadPage"
 )
 
 func TestMaskCacheTilesOfShapesTheAtlasHasMakeNoAllocation(t *testing.T) {

@@ -19,7 +19,7 @@ type resources struct {
 	frame uint64
 
 	masks *gpu.MaskCache
-	pages []Texture // the atlas pages, in order
+	pages []Texture // the atlas pages, by index; nil where the atlas freed a page
 
 	clipMasks map[uint64]*clipMask
 	clipBytes int
@@ -57,7 +57,7 @@ type imageEntry struct {
 func newResources(dev Device) (*resources, error) {
 	r := &resources{
 		dev:       dev,
-		masks:     gpu.NewMaskCache(gpu.AtlasPageSize, gpu.AtlasMaxPages),
+		masks:     gpu.NewMaskCache(gpu.AtlasPageSize, gpu.AtlasMaxPages, gpu.AtlasFramePages),
 		clipMasks: map[uint64]*clipMask{},
 		images:    map[gpu.ImageKey]*imageEntry{},
 	}
@@ -68,13 +68,20 @@ func newResources(dev Device) (*resources, error) {
 		}
 		return mask.Rect, mask.Cov
 	}
-	r.masks.NewPage = func() error {
-		page, err := dev.NewTexture(TextureDesc{Width: gpu.AtlasPageSize, Height: gpu.AtlasPageSize, Format: TextureFormatR8Unorm, MipLevels: 1, Usage: TextureSampled})
+	r.masks.NewPage = func(page int) error {
+		tex, err := dev.NewTexture(TextureDesc{Width: gpu.AtlasPageSize, Height: gpu.AtlasPageSize, Format: TextureFormatR8Unorm, MipLevels: 1, Usage: TextureSampled})
 		if err != nil {
 			return err
 		}
-		r.pages = append(r.pages, page)
+		for len(r.pages) <= page {
+			r.pages = append(r.pages, nil)
+		}
+		r.pages[page] = tex
 		return nil
+	}
+	r.masks.FreePage = func(page int) {
+		r.pages[page].Destroy()
+		r.pages[page] = nil
 	}
 	r.masks.Upload = func(page, x, y, w, h int, data []byte) error {
 		dev.WriteTexture(r.pages[page], 0, image.Rect(x, y, x+w, y+h), data, w)
@@ -104,6 +111,7 @@ func (r *resources) beginFrame() {
 
 // endFrame drops what is old, or over the budget and not used in this frame.
 func (r *resources) endFrame() {
+	r.masks.EndFrame()
 	for k, m := range r.clipMasks {
 		if r.frame-m.lastUsed > gpu.IdleFrames {
 			r.dropClipMask(k, m)
@@ -135,7 +143,9 @@ func (r *resources) release() {
 		r.dropImage(k, e)
 	}
 	for _, p := range r.pages {
-		p.Destroy()
+		if p != nil {
+			p.Destroy()
+		}
 	}
 	r.pages = nil
 	r.masks.Clear()

@@ -31,7 +31,8 @@ type RendererOpts struct {
 	// Now is the clock of the device-loss rule (a second loss within 10 seconds of the first
 	// ends the app); time.Now when nil. Tests set it.
 	Now func() time.Time
-	// Log is where a lost device is reported, at Info level; nothing is logged when nil.
+	// Log is where a lost device is reported, at Info level, and a coverage atlas that is
+	// full, once, at Warn level; nothing is logged when nil.
 	Log *slog.Logger
 	// OnCapture receives a capture whose read-back finishes after Draw returned, on a device
 	// whose reads are asynchronous (WebGPU, SPEC §9.5): Draw then returns a nil image and a nil
@@ -76,6 +77,8 @@ type Renderer struct {
 	closed    bool
 	// cacheSaved is whether the pipeline cache was saved after the first frame.
 	cacheSaved bool
+	// atlasFullLogged is whether the log said that the coverage atlas was full.
+	atlasFullLogged bool
 	// pipes holds the pipelines of the primitives, one for each fixed blend.
 	pipes map[pipeKey]Pipeline
 	// mipSampler is the linear sampler of the downsampling pass, and imageSampler the one that
@@ -503,6 +506,14 @@ func (r *Renderer) build(scene *ui.Scene, width, height int, useCache bool) (*fr
 	fb.stats.ClipMasksBuilt = r.res.clipMasksBuilt - clips0
 	fb.stats.ImagesUploaded = r.res.imagesUploaded - images0
 	r.last = fb.stats
+	if fb.stats.AtlasFull > 0 && !r.atlasFullLogged {
+		// Once: the frames that follow are likely to be the same.
+		r.atlasFullLogged = true
+		if r.opts.Log != nil {
+			r.opts.Log.Warn("the coverage atlas is full: the GPU renderer left out the shapes that did not fit (logged once)",
+				"shapes", fb.stats.AtlasFull, "pages", r.res.masks.Atlas().Stats().Pages, "commands", fb.stats.Commands)
+		}
+	}
 	return fb, nil
 }
 

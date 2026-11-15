@@ -55,11 +55,12 @@ func (s *shapeContext) pathMask(op ui.DisplayOp, p *ui.Paint) (bool, error) {
 	return true, nil
 }
 
-// maskError reports an atlas that is full as an unsupported feature when frames
-// skip them; otherwise, and for other errors, it returns the error as it is.
+// maskError counts a shape that the atlas has no room for, which is left out, and
+// returns nil; it returns any other error as it is.
 func (s *shapeContext) maskError(err error) error {
-	if appErr, ok := errors.FromError(err); ok && appErr.Tag == gpu.TagAtlasFull && s.b.skip {
-		return s.b.unsupported("coverage atlas full")
+	if appErr, ok := errors.FromError(err); ok && appErr.Tag == gpu.TagAtlasFull {
+		s.b.atlasFull()
+		return nil
 	}
 	return err
 }

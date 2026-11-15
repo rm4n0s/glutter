@@ -34,6 +34,8 @@ type glesRenderer struct {
 	renderer *gles.Renderer
 	surfaces map[gpu.SurfaceHandle]gpu.Surface
 	reported int // the number of skipped commands the log last said
+	// atlasFullLogged is whether the log said that the coverage atlas was full.
+	atlasFullLogged bool
 	// announced is whether the log said that the renderer is ready.
 	announced bool
 	// reattached is whether the first frame on a surface made for the existing context is still to
@@ -132,10 +134,7 @@ func (r *glesRenderer) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sc
 		r.reattached = false
 		r.log.Info("OpenGL ES first frame on the new surface", "tiles_rasterized", st.TilesRasterized, "images_uploaded", st.ImagesUploaded, "clip_masks_built", st.ClipMasksBuilt)
 	}
-	if st := r.renderer.LastFrame(); st.Skipped > 0 && st.Skipped != r.reported {
-		r.reported = st.Skipped
-		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
-	}
+	r.reportLeftOut(r.renderer.LastFrame())
 	return img, nil
 }
 
@@ -162,4 +161,25 @@ func (r *glesRenderer) Close() {
 		_ = r.renderer.Close()
 		r.renderer = nil
 	}
+}
+
+// reportLeftOut logs what a frame left out. What the renderer cannot draw yet is logged when the
+// number of commands changes. A coverage atlas that had no room for the shapes of a frame
+// (gles.FrameStats.AtlasFull; the frame is drawn without them and has no error) has a line of its
+// own, once: the frames that follow are likely to be the same, with another number of shapes.
+func (r *glesRenderer) reportLeftOut(st gles.FrameStats) {
+	if st.Skipped > 0 && st.Skipped != r.reported && !onlyAtlasFull(st.Unsupported) {
+		r.reported = st.Skipped
+		r.log.Warn("the GPU renderer left out what it cannot draw yet", "skipped", st.Skipped, "drawn", st.Drawn, "features", st.Unsupported)
+	}
+	if st.AtlasFull > 0 && !r.atlasFullLogged {
+		r.atlasFullLogged = true
+		r.log.Warn("the coverage atlas is full: the GPU renderer left out the shapes that did not fit (logged once)", "shapes", st.AtlasFull, "commands", st.Commands)
+	}
+}
+
+// onlyAtlasFull says that the only reason of the commands a frame left out is a coverage atlas
+// that had no room for their shapes.
+func onlyAtlasFull(features []string) bool {
+	return len(features) == 1 && features[0] == gpu.FeatureAtlasFull
 }

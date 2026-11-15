@@ -28,8 +28,9 @@ func (s *shapeContext) pathMask(op ui.DisplayOp, p *ui.Paint) (bool, error) {
 	}
 	tiles, err := s.b.res.masks.Tiles(op, sh, &s.c.Transform, gpu.MaskMargin(sh, scale), s.outer)
 	if err != nil {
-		if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagAtlasFull && s.b.skip {
-			return false, s.b.unsupported("coverage atlas full")
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagAtlasFull {
+			s.b.atlasFull()
+			return false, nil
 		}
 		return false, err
 	}

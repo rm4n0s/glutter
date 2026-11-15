@@ -18,14 +18,22 @@ import (
 // The sizes of the coverage atlas.
 const (
 	// AtlasPageSize is the side of a page of the coverage atlas, and AtlasMaxPages the number
-	// of pages it may grow to: 8-bit pages, so 32 MB at most.
+	// of pages it keeps: 8-bit pages, so 32 MB.
 	//
 	// Flutter: no counterpart
 	AtlasPageSize = 2048
-	// AtlasMaxPages is the number of pages the coverage atlas may grow to.
+	// AtlasMaxPages is the number of pages the coverage atlas keeps from one frame to the next.
 	//
 	// Flutter: no counterpart
 	AtlasMaxPages = 8
+	// AtlasFramePages is the number of pages that the shapes of one frame may make the coverage
+	// atlas grow to, 128 MB: a frame of many large shapes (the shadows of a screen of cards and
+	// panels) needs more tiles at once than the atlas keeps, and they are all read by the draws
+	// of the frame. The pages over AtlasMaxPages are freed when a frame does not use them. A
+	// shape that still does not fit is left out of the frame.
+	//
+	// Flutter: no counterpart
+	AtlasFramePages = 32
 )
 
 // MaskKey identifies a tile of the coverage of a shape.
@@ -186,13 +194,18 @@ func MaskMargin(sh OpShape, scale float64) float64 {
 // Flutter: no counterpart
 type MaskCache struct {
 	atlas *Atlas[MaskKey]
-	pages int
+	// made says which pages of the atlas the renderer has made, by index.
+	made []bool
 	// Rasterize makes the coverage of op under m over area: the rectangle it covers and one
 	// coverage from 0 to 1 per pixel, row by row; nil when the shape covers nothing there.
 	Rasterize func(op ui.DisplayOp, m *ui.Matrix4, area image.Rectangle) (rect image.Rectangle, cov []float32)
-	// NewPage is called when the atlas grows by a page, which the renderer must make: an 8-bit
-	// texture of PageSize pixels on each side.
-	NewPage func() error
+	// NewPage is called when the atlas has a new page at the index, which the renderer must
+	// make: an 8-bit texture of PageSize pixels on each side. The index is the lowest one
+	// without a page: the number of pages so far, or the index of a page that was freed.
+	NewPage func(page int) error
+	// FreePage is called when the atlas no longer has the page at the index: the renderer frees
+	// its texture. No draw of the frame that ends reads it.
+	FreePage func(page int)
 	// Upload copies the bytes of a tile, w x h, row by row, to the page at (x, y).
 	Upload func(page, x, y, w, h int, data []byte) error
 	// Rasterized counts the tiles that were rasterized, and Requests the calls of Tiles (a
@@ -204,15 +217,16 @@ type MaskCache struct {
 	tiles []MaskTile
 }
 
-// NewMaskCache returns an empty cache whose atlas has pages of pageSize pixels, at most
-// maxPages of them.
+// NewMaskCache returns an empty cache whose atlas has pages of pageSize pixels: it keeps at
+// most maxPages of them, and one frame may make it grow to framePages.
 //
 // Flutter: no counterpart
-func NewMaskCache(pageSize, maxPages int) *MaskCache {
-	return &MaskCache{atlas: NewAtlas[MaskKey](pageSize, maxPages)}
+func NewMaskCache(pageSize, maxPages, framePages int) *MaskCache {
+	return &MaskCache{atlas: NewAtlas[MaskKey](pageSize, maxPages).SetFrameLimit(framePages)}
 }
 
-// SetAtlas replaces the atlas, for tests that need a small one.
+// SetAtlas replaces the atlas, for tests that need a small one. It is for a cache that has
+// made no page yet.
 //
 // Flutter: no counterpart
 func (c *MaskCache) SetAtlas(a *Atlas[MaskKey]) { c.atlas = a }
@@ -227,16 +241,32 @@ func (c *MaskCache) Atlas() *Atlas[MaskKey] { return c.atlas }
 // Flutter: no counterpart
 func (c *MaskCache) BeginFrame() { c.atlas.BeginFrame() }
 
-// Clear forgets every tile.
+// EndFrame ends a frame: the pages over the number the atlas keeps that the frame did not use
+// are freed (FreePage), with their tiles.
 //
 // Flutter: no counterpart
-func (c *MaskCache) Clear() { c.atlas.Clear(); c.pages = 0 }
+func (c *MaskCache) EndFrame() {
+	for _, page := range c.atlas.EndFrame() {
+		if page < len(c.made) && c.made[page] {
+			c.made[page] = false
+			if c.FreePage != nil {
+				c.FreePage(page)
+			}
+		}
+	}
+}
+
+// Clear forgets every tile and every page; the renderer frees the pages it made.
+//
+// Flutter: no counterpart
+func (c *MaskCache) Clear() { c.atlas.Clear(); c.made = c.made[:0] }
 
 // Tiles returns the tiles of coverage to draw for the shape under the transform, within the
 // visible pixels, rasterizing and uploading the ones the atlas does not have. margin is how
 // far the shape's coverage can reach beyond its bounds, in its own units. It fails with
-// AtlasFull when a tile fits no page. The slice is the cache's own: it is valid until the next call
-// of Tiles.
+// AtlasFull when a tile fits no page and the atlas is as large as a frame may make it; the
+// renderer then leaves the shape out. The slice is the cache's own: it is valid until the
+// next call of Tiles.
 //
 // Flutter: no counterpart
 func (c *MaskCache) Tiles(op ui.DisplayOp, sh OpShape, m *ui.Matrix4, margin float64, visible image.Rectangle) ([]MaskTile, error) {
@@ -309,11 +339,14 @@ func (c *MaskCache) rasterizeTile(op ui.DisplayOp, m *ui.Matrix4, key MaskKey, a
 	if err != nil {
 		return nil, err
 	}
-	for c.pages < c.atlas.Pages() {
-		if err := c.NewPage(); err != nil {
+	for len(c.made) <= entry.Page {
+		c.made = append(c.made, false)
+	}
+	if !c.made[entry.Page] {
+		if err := c.NewPage(entry.Page); err != nil {
 			return nil, err
 		}
-		c.pages++
+		c.made[entry.Page] = true
 	}
 	if err := c.Upload(entry.Page, entry.X, entry.Y, w, h, CoverageBytes(cov)); err != nil {
 		return nil, err

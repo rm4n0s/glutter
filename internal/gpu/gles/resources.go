@@ -10,7 +10,8 @@ import (
 // The sizes of the renderer's caches.
 const (
 	// atlasPageSize is the side of a page of the coverage atlas, and atlasMaxPages
-	// the number of pages it may grow to: 8-bit pages, so 32 MB at most.
+	// the number of pages it keeps: 8-bit pages, so 32 MB. A frame that needs more
+	// makes it grow to gpu.AtlasFramePages.
 	atlasPageSize = gpu.AtlasPageSize
 	atlasMaxPages = gpu.AtlasMaxPages
 	// clipMaskBudget is the most memory, in bytes, that clip masks that are not
@@ -32,7 +33,7 @@ type resources struct {
 	frame uint64
 
 	masks *gpu.MaskCache // the coverage atlas and its tiling
-	pages []*Texture     // the atlas pages, in order
+	pages []*Texture     // the atlas pages, by index; nil where the atlas freed a page
 
 	clipMasks map[uint64]*clipMask
 	clipBytes int
@@ -49,7 +50,7 @@ type resources struct {
 func newResources(dev *Device, gl glAPI) (*resources, error) {
 	r := &resources{
 		dev: dev, gl: gl,
-		masks:     gpu.NewMaskCache(atlasPageSize, atlasMaxPages),
+		masks:     gpu.NewMaskCache(atlasPageSize, atlasMaxPages, gpu.AtlasFramePages),
 		clipMasks: map[uint64]*clipMask{},
 		images:    map[gpu.ImageKey]*imageEntry{},
 	}
@@ -60,14 +61,21 @@ func newResources(dev *Device, gl glAPI) (*resources, error) {
 		}
 		return mask.Rect, mask.Cov
 	}
-	r.masks.NewPage = func() error {
-		page, err := dev.AcquireTexture(atlasPageSize, atlasPageSize, TextureFormatR8)
+	r.masks.NewPage = func(page int) error {
+		tex, err := dev.AcquireTexture(atlasPageSize, atlasPageSize, TextureFormatR8)
 		if err != nil {
 			return err
 		}
-		dev.SetTextureParams(page, glNearest, glNearest, glClampToEdge, glClampToEdge)
-		r.pages = append(r.pages, page)
+		dev.SetTextureParams(tex, glNearest, glNearest, glClampToEdge, glClampToEdge)
+		for len(r.pages) <= page {
+			r.pages = append(r.pages, nil)
+		}
+		r.pages[page] = tex
 		return nil
+	}
+	r.masks.FreePage = func(page int) {
+		dev.ReleaseTexture(r.pages[page])
+		r.pages[page] = nil
 	}
 	r.masks.Upload = func(page, x, y, w, h int, data []byte) error {
 		return dev.UploadTexture(r.pages[page], x, y, w, h, data)
@@ -92,6 +100,7 @@ func (r *resources) beginFrame() {
 
 // endFrame drops what is old, or over the budget and not used in this frame.
 func (r *resources) endFrame() {
+	r.masks.EndFrame()
 	for k, m := range r.clipMasks {
 		if r.frame-m.lastUsed > idleFrames {
 			r.dropClipMask(k, m)
@@ -124,7 +133,9 @@ func (r *resources) release() {
 		r.dropImage(k, e)
 	}
 	for _, p := range r.pages {
-		r.dev.ReleaseTexture(p)
+		if p != nil {
+			r.dev.ReleaseTexture(p)
+		}
 	}
 	r.pages = nil
 	r.masks.Clear()

@@ -160,8 +160,14 @@ type FrameStats struct {
 	// lie outside the part of the surface their clip reaches (SPEC §9.1, "Culling").
 	Culled int
 	// Skipped is the number of commands left out because the renderer cannot draw
-	// them yet; only a renderer with SkipUnsupported skips.
+	// them yet, which only a renderer with SkipUnsupported does, or because the
+	// coverage atlas had no room for their shape (AtlasFull).
 	Skipped int
+	// AtlasFull is the number of shapes left out because the coverage atlas was as
+	// large as a frame may make it (gpu.AtlasFramePages) and every tile in it was in
+	// use; the shapes inside a shadow are counted too. Unsupported then has
+	// gpu.FeatureAtlasFull.
+	AtlasFull int
 	// Instances is the number of instanced primitives sent to the GPU (shapes,
 	// coverage tiles and image rectangles), Vertices the number of vertices, and
 	// Batches the number of draw calls that drew them.
@@ -192,6 +198,20 @@ func (b *frameBuilder) unsupported(what string) error {
 	if !b.skip {
 		return errors.New(tagGLNotImplemented, "the GPU renderer cannot draw this yet", "feature", what)
 	}
+	b.leftOut(what)
+	return nil
+}
+
+// atlasFull is called for a shape that the coverage atlas has no room for in this
+// frame: the shape is left out and counted, in every mode. A frame never fails for
+// it: the app would stop (SPEC §9.1, "General paths").
+func (b *frameBuilder) atlasFull() {
+	b.stats.AtlasFull++
+	b.leftOut(gpu.FeatureAtlasFull)
+}
+
+// leftOut records the reason of a command that is left out, once.
+func (b *frameBuilder) leftOut(what string) {
 	if !b.reasons[what] {
 		if b.reasons == nil {
 			b.reasons = map[string]bool{}
@@ -199,7 +219,6 @@ func (b *frameBuilder) unsupported(what string) error {
 		b.reasons[what] = true
 		b.stats.Unsupported = append(b.stats.Unsupported, what)
 	}
-	return nil
 }
 
 // command adds one command of the draw list.
