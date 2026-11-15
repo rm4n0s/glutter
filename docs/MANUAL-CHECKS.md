@@ -1206,3 +1206,14 @@ Safari on a Mac (and Chrome on a Mac for point 1), with `go run ./cmd/glutter-we
 5. With `?GLUTTER_RENDERER=webgl` added to the address, the page looks the same as without it (the WebGL 2 fallback on the screen; the tests read its frame back and did not look at it).
 
 Answers: _(not yet recorded)_
+
+## 46.2 The frame of many shadows on a Mac
+
+Step 46.1 (Glutter 1.17.4) lets the coverage atlas of the GPU renderers grow for a frame, so that a screen of many shadows no longer stops the app with `AtlasFull`. Its display tests ran on Vulkan and OpenGL ES on the Linux machine. The test of Metal was written there and has never run: these are its first runs. From the module root, on a Mac:
+
+1. `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' -run TestMetalDrawsAFrameThatFillsTheAtlas -v ./internal/gpu/metal`: does it pass? It logs the tiles each of its four frames rasterized (the first more than 512, the second none, the fourth some). It skips when the machine has no Metal device. With `GLUTTER_TEST_DUMP=/some/dir` in front it writes the frame as `metal-many-shadows.png`: ten soft shadows of panels on white, one inside the other.
+2. `go test -run 'AtlasGrows|MaskCacheMakesAndFrees|AFullAtlas|AtlasPagesOfAFrame|AFrameOfManyShadows' ./internal/gpu ./internal/gpu/explicit`: do they pass? These are the unit tests of 46.1 that run on any machine (they draw on a recording device, not on Metal).
+3. The other display tests of Metal, which the change of 46.1 could have broken and which only a Mac runs: `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' ./internal/gpu/metal`: do they pass as before?
+4. An app with many shadows (Fishball with its shadows on, if it runs on the Mac): the screen that stopped the app draws, and the log has no line "the coverage atlas is full".
+
+Answers: _(not yet recorded)_
