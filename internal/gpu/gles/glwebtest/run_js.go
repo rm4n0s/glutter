@@ -14,6 +14,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	"github.com/rm4n0s/glutter/internal/proof"
 	m "github.com/rm4n0s/glutter/material"
@@ -27,6 +28,8 @@ func run() error {
 	switch mode := param("mode"); mode {
 	case "parity":
 		postResult(parity())
+	case "issue":
+		postResult(issue(param("issue")))
 	case "unavailable":
 		postResult(unavailable())
 	case "loss":
@@ -34,7 +37,7 @@ func run() error {
 	case "choose", "restore":
 		return engineApp(mode)
 	default:
-		return errors.New(tagGLWebTestModeUnknown, "the query parameter mode is not parity, unavailable, loss, choose or restore", "mode", mode)
+		return errors.New(tagGLWebTestModeUnknown, "the query parameter mode is not parity, issue, unavailable, loss, choose or restore", "mode", mode)
 	}
 	// The result is posted by an asynchronous call: the program stays until the test has it, so
 	// that its ending is not taken for the program's failure.
@@ -150,6 +153,50 @@ func paritySceneOf(sc proof.Scene, res *parityResult) sceneResult {
 	}
 	out.Repeat = diff(again, got)
 	return out
+}
+
+// issueResult is the result of the mode issue.
+type issueResult struct {
+	// Lines are the lines of the issue's report (internal/issues).
+	Lines    []string `json:"lines"`
+	Renderer string   `json:"renderer"`
+	Error    string   `json:"error"`
+}
+
+// issue runs the reproduction of a reported issue (internal/issues) with the gles renderer on
+// WebGL 2, on a canvas of the size the reproduction asks for.
+func issue(name string) issueResult {
+	var res issueResult
+	fail := func(step string, err error) issueResult {
+		res.Error = step + ": " + err.Error()
+		if t := tagOf(err); t.Tag != "" {
+			res.Error += " [" + t.Tag + " " + t.Route + "]"
+		}
+		return res
+	}
+	if name != issues.AtlasFullName {
+		res.Error = "the query parameter issue is not " + issues.AtlasFullName + ": " + name
+		return res
+	}
+	canvas := newCanvas(0, issues.AtlasFullWidth, issues.AtlasFullHeight)
+	defer canvas.Call("remove")
+	r := gles.NewRenderer(gles.RendererOpts{Background: ui.NewColor(0), HasBackground: true})
+	defer func() { _ = r.Close() }()
+	s, err := r.Attach(handleOf(0))
+	if err != nil {
+		return fail("Attach", err)
+	}
+	res.Renderer = r.DeviceName()
+	rep, _, err := issues.RunAtlasFull(func(scene *ui.Scene, width, height int) (*image.RGBA, issues.AtlasFullStats, error) {
+		img, err := r.RenderCapture(s, scene, ui.Size{Width: float64(width), Height: float64(height)}, 1)
+		st := r.LastFrame()
+		return img, issues.AtlasFullStats{TilesRasterized: st.TilesRasterized, AtlasFull: st.AtlasFull, Skipped: st.Skipped, Unsupported: st.Unsupported}, err
+	})
+	if err != nil {
+		return fail("the frames", err)
+	}
+	res.Lines = rep.Lines()
+	return res
 }
 
 // unavailable asks for contexts that cannot be made.

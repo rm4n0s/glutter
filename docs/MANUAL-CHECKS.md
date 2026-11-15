@@ -1207,13 +1207,18 @@ Safari on a Mac (and Chrome on a Mac for point 1), with `go run ./cmd/glutter-we
 
 Answers: _(not yet recorded)_
 
-## 46.2 The frame of many shadows on a Mac
+## 46.2 The frame of many shadows on a Windows PC and on a Mac
 
-Step 46.1 (Glutter 1.17.4) lets the coverage atlas of the GPU renderers grow for a frame, so that a screen of many shadows no longer stops the app with `AtlasFull`. Its display tests ran on Vulkan and OpenGL ES on the Linux machine. The test of Metal was written there and has never run: these are its first runs. From the module root, on a Mac:
+Step 46.1 (Glutter 1.17.4) lets the coverage atlas of the GPU renderers grow for a frame, so that a screen of many shadows no longer stops the app with `AtlasFull`. Step 46.2 gave the platforms a test that runs the same reproduction (`internal/issues`): four frames of 1920x1080 pixels (ten shadows, the same again, one shadow, the ten again), with the same check. On the Linux machine it passed on Vulkan (lavapipe, validation on), OpenGL ES, Direct3D 12 under Wine, the Android emulator (Vulkan and OpenGL ES, on SwiftShader) and in Chromium and Firefox (WebGPU and WebGL 2). Every test logs four lines `atlas-full: frame "..." tiles N full 0 skipped 0 ...`: the first frame has 636 tiles (more than the 512 of the eight kept pages), the second none, the fourth some, and the `pixels` of the first, second and fourth are the same. From the module root:
 
-1. `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' -run TestMetalDrawsAFrameThatFillsTheAtlas -v ./internal/gpu/metal`: does it pass? It logs the tiles each of its four frames rasterized (the first more than 512, the second none, the fourth some). It skips when the machine has no Metal device. With `GLUTTER_TEST_DUMP=/some/dir` in front it writes the frame as `metal-many-shadows.png`: ten soft shadows of panels on white, one inside the other.
-2. `go test -run 'AtlasGrows|MaskCacheMakesAndFrees|AFullAtlas|AtlasPagesOfAFrame|AFrameOfManyShadows' ./internal/gpu ./internal/gpu/explicit`: do they pass? These are the unit tests of 46.1 that run on any machine (they draw on a recording device, not on Metal).
-3. The other display tests of Metal, which the change of 46.1 could have broken and which only a Mac runs: `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' ./internal/gpu/metal`: do they pass as before?
-4. An app with many shadows (Fishball with its shadows on, if it runs on the Mac): the screen that stopped the app draws, and the log has no line "the coverage atlas is full".
+**On a Windows PC** (the test passed under Wine, whose Direct3D 12 is vkd3d on Vulkan)
+
+1. `go test -tags glutter_wine -run DrawsAFrameThatFillsTheAtlas -v ./internal/gpu/d3d12`: does it pass on the PC's own Direct3D 12? When it fails, send its whole output.
+
+**An app**
+
+2. An app with many shadows (Fishball with its shadows on), on any platform: the screen that stopped the app draws, and the log has no line "the coverage atlas is full".
+
+**On a Mac** these are step 47.1, the Mac agent's: it runs the Metal test, which was written on Linux and has **never run**, and writes and runs the Simulator test. To try the Metal test by hand: `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' -run DrawsAFrameThatFillsTheAtlas -v ./internal/gpu/metal` (with `GLUTTER_TEST_DUMP=/some/dir` in front it writes the frame as `metal-many-shadows.png`: ten soft shadows of panels on white, one inside the other).
 
 Answers: _(not yet recorded)_

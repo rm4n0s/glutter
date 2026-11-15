@@ -15,6 +15,11 @@
 // skipped, and files/parity/<renderer>/DONE when the whole run finished. The same program draws every
 // scene with the software renderer too, into files/parity/soft: the host's fonts are not the
 // device's, so the device's own software images are what the GPU images are compared with.
+//
+// With GLUTTER_ISSUE=<name> it runs the reproduction of a reported issue instead (internal/issues;
+// atlas-full is the frame of many shadows of step 46.1), with the same renderer, and writes
+// files/issues/<name>/<renderer>/report.txt (the lines of the issue's report), frame.png (the first
+// frame) and DONE.
 package main
 
 import (
@@ -34,6 +39,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/android"
 	"github.com/rm4n0s/glutter/internal/proof"
@@ -92,15 +98,22 @@ func (h *parity) OnFrame(ui.ViewID, time.Duration) {
 	h.cancel()
 }
 
-// sceneDrawer draws a scene of the given size and returns its pixels and how many commands the
-// renderer skipped.
-type sceneDrawer func(scene *ui.Scene, width, height int) (*image.RGBA, int, error)
+// sceneDrawer draws a scene of the given size and returns its pixels and what the renderer says
+// of the frame: how many commands it skipped, and the numbers that the reproduction of an issue
+// reports.
+type sceneDrawer func(scene *ui.Scene, width, height int) (*image.RGBA, issues.AtlasFullStats, error)
 
 // drawAll attaches the renderer to the window and draws every scene.
 func (h *parity) drawAll() error {
+	issue := os.Getenv(issues.Env)
 	dir := filepath.Join(os.Getenv("HOME"), "parity", h.renderer)
 	softDir := filepath.Join(os.Getenv("HOME"), "parity", "soft")
-	for _, d := range []string{dir, softDir} {
+	dirs := []string{dir, softDir}
+	if issue != "" {
+		dir = filepath.Join(os.Getenv("HOME"), "issues", issue, h.renderer)
+		dirs = []string{dir}
+	}
+	for _, d := range dirs {
 		if err := os.RemoveAll(d); err != nil {
 			return errors.NewErr(tagParityWriteFailed, err).SetMetadata("dir", d)
 		}
@@ -132,9 +145,10 @@ func (h *parity) drawAll() error {
 			closeFn()
 			return err
 		}
-		draw = func(scene *ui.Scene, width, height int) (*image.RGBA, int, error) {
+		draw = func(scene *ui.Scene, width, height int) (*image.RGBA, issues.AtlasFullStats, error) {
 			img, err := r.Snapshot(scene, ui.Size{Width: float64(width), Height: float64(height)})
-			return img, r.LastFrame().Skipped, err
+			st := r.LastFrame()
+			return img, issues.AtlasFullStats{TilesRasterized: st.TilesRasterized, AtlasFull: st.AtlasFull, Skipped: st.Skipped, Unsupported: st.Unsupported}, err
 		}
 	case "vulkan":
 		window := h.win.NativeSurface()
@@ -149,9 +163,10 @@ func (h *parity) drawAll() error {
 		closeFn = r.Close
 		// Every scene is drawn through the window: the frame is blitted into the swapchain image,
 		// rotated by its pre-transform, and presented; the capture is the frame texture.
-		draw = func(scene *ui.Scene, width, height int) (*image.RGBA, int, error) {
+		draw = func(scene *ui.Scene, width, height int) (*image.RGBA, issues.AtlasFullStats, error) {
 			img, err := r.Draw(window, width, height, scene, true)
-			return img, r.LastFrame().Skipped, err
+			st := r.LastFrame()
+			return img, issues.AtlasFullStats{TilesRasterized: st.TilesRasterized, AtlasFull: st.AtlasFull, Skipped: st.Skipped, Unsupported: st.Unsupported}, err
 		}
 		device = "vulkan"
 	default:
@@ -159,15 +174,30 @@ func (h *parity) drawAll() error {
 	}
 	defer closeFn()
 	slog.Info("android-parity: renderer ready", "renderer", h.renderer, "device", device)
+	done := proof.Names()
+	if issue != "" {
+		done = []string{issue}
+		if err := drawIssue(issue, dir, draw); err != nil {
+			return err
+		}
+		if vkDev != nil {
+			device = vkDev.Description()
+			slog.Info("android-parity: Vulkan device", "device", device)
+		}
+	}
 	for _, name := range proof.Names() {
+		if issue != "" {
+			break
+		}
 		sc, err := proof.Lookup(name)
 		if err != nil {
 			return err
 		}
-		img, skipped, err := draw(sc.Build(), sc.Width, sc.Height)
+		img, st, err := draw(sc.Build(), sc.Width, sc.Height)
 		if err != nil {
 			return err
 		}
+		skipped := st.Skipped
 		if vkDev != nil && device == "vulkan" {
 			device = vkDev.Description()
 			slog.Info("android-parity: Vulkan device", "device", device)
@@ -199,14 +229,35 @@ func (h *parity) drawAll() error {
 	if err := os.WriteFile(filepath.Join(dir, "device.txt"), []byte(device+"\n"), 0o644); err != nil {
 		return errors.NewErr(tagParityWriteFailed, err).SetMetadata("dir", dir)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "DONE"), []byte(strings.Join(proof.Names(), "\n")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "DONE"), []byte(strings.Join(done, "\n")+"\n"), 0o644); err != nil {
 		return errors.NewErr(tagParityWriteFailed, err).SetMetadata("dir", dir)
 	}
 	return nil
 }
 
+// drawIssue runs the reproduction of the issue with the renderer and writes its report and its
+// first frame into the directory. An error of a frame, which is the issue itself on a renderer
+// without its fix, ends the run with no report.
+func drawIssue(issue, dir string, draw sceneDrawer) error {
+	if issue != issues.AtlasFullName {
+		return errors.New(tagParityIssueUnknown, "GLUTTER_ISSUE is not an issue that the program reproduces", "value", issue, "known", issues.AtlasFullName)
+	}
+	rep, first, err := issues.RunAtlasFull(issues.AtlasFullDraw(draw))
+	if err != nil {
+		return err
+	}
+	for _, line := range rep.Lines() {
+		slog.Info("android-parity: " + line)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "report.txt"), []byte(strings.Join(rep.Lines(), "\n")+"\n"), 0o644); err != nil {
+		return errors.NewErr(tagParityWriteFailed, err).SetMetadata("issue", issue)
+	}
+	return goldens.WritePNG(filepath.Join(dir, "frame.png"), first)
+}
+
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
 	tagParityRendererUnknown = "ParityRendererUnknown"
+	tagParityIssueUnknown    = "ParityIssueUnknown"
 	tagParityWriteFailed     = "ParityWriteFailed"
 )

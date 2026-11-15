@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/internal/webtest"
 	"github.com/rm4n0s/glutter/internal/webtool"
@@ -89,6 +90,38 @@ type parityResult struct {
 
 func (d diffStats) gputest() gputest.Diff {
 	return gputest.Diff{Pixels: d.Pixels, Over8: d.Over8, Over32: d.Over32, Over96: d.Over96, Max: d.Max}
+}
+
+// TestBrowserDrawsAFrameThatFillsTheAtlas draws, with the browser's WebGL 2, the frame that stopped
+// Fishball (step 46.1): shadows whose masks need more tiles at once than the eight pages the
+// coverage atlas keeps. It is the reproduction that every platform runs (internal/issues): the
+// frame is drawn with nothing left out; a small frame after it frees the pages over the eight; and
+// the first frame again, on pages made again, has the pixels it had.
+func TestBrowserDrawsAFrameThatFillsTheAtlas(t *testing.T) {
+	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
+		var res struct {
+			Lines    []string `json:"lines"`
+			Renderer string   `json:"renderer"`
+			Error    string   `json:"error"`
+		}
+		if err := json.Unmarshal(await(t, b, url.Values{"mode": {"issue"}, "issue": {issues.AtlasFullName}}, 5*time.Minute), &res); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%s draws with %q", b, res.Renderer)
+		if res.Error != "" {
+			t.Fatal(res.Error)
+		}
+		rep, err := issues.ParseAtlasFull(res.Lines)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range rep.Lines() {
+			t.Log(line)
+		}
+		for _, problem := range rep.Problems() {
+			t.Error(problem)
+		}
+	})
 }
 
 // TestBrowserEveryProofSceneMatchesSoftware is the parity test of step 3.6 on WebGL 2: every

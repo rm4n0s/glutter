@@ -19,6 +19,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/gpu/webgpu"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	"github.com/rm4n0s/glutter/internal/proof"
 	m "github.com/rm4n0s/glutter/material"
@@ -43,6 +44,8 @@ func run() error {
 		postResult(parity())
 	case "scenes":
 		postResult(scenes())
+	case "issue":
+		postResult(issue(param("issue")))
 	case "unavailable":
 		postResult(unavailable())
 	case "loss":
@@ -58,7 +61,7 @@ func run() error {
 	case "switch":
 		return switchApp()
 	default:
-		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, scenes, unavailable, loss, gpuapi, viewport3d, choose, failstart or switch", "mode", mode)
+		return errors.New(tagGPUWebTestModeUnknown, "the query parameter mode is not probe, parity, scenes, issue, unavailable, loss, gpuapi, viewport3d, choose, failstart or switch", "mode", mode)
 	}
 	// The result is posted by an asynchronous call: the program stays until the test has it, so
 	// that its ending is not taken for the program's failure.
@@ -234,6 +237,47 @@ func scenes() scenesResult {
 	res.Results = results()
 	time.Sleep(150 * time.Millisecond) // the browser reports a broken rule in a task of its own
 	res.Validation = p.ValidationErrors()
+	return res
+}
+
+// issueResult is the result of the mode issue.
+type issueResult struct {
+	// Lines are the lines of the issue's report (internal/issues).
+	Lines      []string `json:"lines"`
+	Renderer   string   `json:"renderer"`
+	Validation []string `json:"validation"`
+	Error      string   `json:"error"`
+}
+
+// issue runs the reproduction of a reported issue (internal/issues) with the explicit renderer on
+// WebGPU, on a canvas of the size the reproduction asks for.
+func issue(name string) issueResult {
+	var res issueResult
+	if name != issues.AtlasFullName {
+		res.Error = "the query parameter issue is not " + issues.AtlasFullName + ": " + name
+		return res
+	}
+	canvas := newCanvas(0, issues.AtlasFullWidth, issues.AtlasFullHeight)
+	defer canvas.Call("remove")
+	g, err := newRig(0, issues.AtlasFullWidth, issues.AtlasFullHeight)
+	if err != nil {
+		res.Error = "Acquire: " + describe(err)
+		return res
+	}
+	defer g.r.Close()
+	rep, _, err := issues.RunAtlasFull(func(scene *ui.Scene, _, _ int) (*image.RGBA, issues.AtlasFullStats, error) {
+		img, err := g.frame(scene)
+		st := g.r.LastFrame()
+		return img, issues.AtlasFullStats{TilesRasterized: st.TilesRasterized, AtlasFull: st.AtlasFull, Skipped: st.Skipped, Unsupported: st.Unsupported}, err
+	})
+	res.Renderer = g.r.Describe()
+	if err != nil {
+		res.Error = "the frames: " + describe(err)
+		return res
+	}
+	res.Lines = rep.Lines()
+	time.Sleep(150 * time.Millisecond) // the browser reports a broken rule in a task of its own
+	res.Validation = g.prov.ValidationErrors()
 	return res
 }
 

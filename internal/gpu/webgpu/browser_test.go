@@ -22,6 +22,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/goldens"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit/devicetest"
 	"github.com/rm4n0s/glutter/internal/gpu/gputest"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/proof"
 	"github.com/rm4n0s/glutter/internal/scenetest"
 	"github.com/rm4n0s/glutter/internal/webtest"
@@ -213,6 +214,43 @@ func TestBrowserScenes(t *testing.T) {
 					t.Error(f)
 				}
 			})
+		}
+	})
+}
+
+// TestBrowserDrawsAFrameThatFillsTheAtlas draws, with the browser's WebGPU, the frame that stopped
+// Fishball (step 46.1): shadows whose masks need more tiles at once than the eight pages the
+// coverage atlas keeps. It is the reproduction that every platform runs (internal/issues): the
+// frame is drawn with nothing left out; a small frame after it frees the pages over the eight; and
+// the first frame again, on pages made again, has the pixels it had, with no validation error
+// from the browser.
+func TestBrowserDrawsAFrameThatFillsTheAtlas(t *testing.T) {
+	eachBrowserWithWebGPU(t, func(t *testing.T, b webtest.Browser) {
+		var res struct {
+			Lines      []string `json:"lines"`
+			Renderer   string   `json:"renderer"`
+			Validation []string `json:"validation"`
+			Error      string   `json:"error"`
+		}
+		if err := json.Unmarshal(await(t, b, url.Values{"mode": {"issue"}, "issue": {issues.AtlasFullName}}, 5*time.Minute), &res); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%s draws with %q", b, res.Renderer)
+		if res.Error != "" {
+			t.Fatal(res.Error)
+		}
+		if len(res.Validation) != 0 {
+			t.Errorf("the browser reported %d validation errors, the first: %s", len(res.Validation), res.Validation[0])
+		}
+		rep, err := issues.ParseAtlasFull(res.Lines)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range rep.Lines() {
+			t.Log(line)
+		}
+		for _, problem := range rep.Problems() {
+			t.Error(problem)
 		}
 	})
 }
