@@ -150,22 +150,25 @@ func mustOK(t *testing.T, err error) {
 	}
 }
 
+// notAHandle is a value that is never a handle of the process: handles are small multiples of
+// four. The cases below once used an event that the test had closed, but the value of a closed
+// handle is free for the next handle that any thread of the process opens (the Go runtime's
+// among them), and the second CloseHandle then closed that one: the case failed about once in
+// some hundred runs, and once the test binary hung until its timeout (step 46.2).
+const notAHandle = uintptr(0x7ffffff0)
+
 func TestInvalidHandlesFail(t *testing.T) {
-	h, err := CreateEvent(true, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	mustOK(t, CloseHandle(h))
+	h := notAHandle
 	tests := []struct {
 		name string
 		call func() error
 		fn   string
 		path string
 	}{
-		{"closing a closed handle", func() error { return CloseHandle(h) }, "CloseHandle", "CloseHandle->Win32Error.Win32CallFailed"},
-		{"setting a closed event", func() error { return SetEvent(h) }, "SetEvent", "SetEvent->Win32Error.Win32CallFailed"},
-		{"resetting a closed event", func() error { return ResetEvent(h) }, "ResetEvent", "ResetEvent->Win32Error.Win32CallFailed"},
-		{"waiting for a closed event", func() error { _, err := WaitForSingleObject(h, 0); return err }, "WaitForSingleObject", "WaitForSingleObject->Win32Error.Win32CallFailed"},
+		{"closing what is not a handle", func() error { return CloseHandle(h) }, "CloseHandle", "CloseHandle->Win32Error.Win32CallFailed"},
+		{"setting what is not an event", func() error { return SetEvent(h) }, "SetEvent", "SetEvent->Win32Error.Win32CallFailed"},
+		{"resetting what is not an event", func() error { return ResetEvent(h) }, "ResetEvent", "ResetEvent->Win32Error.Win32CallFailed"},
+		{"waiting for what is not an event", func() error { _, err := WaitForSingleObject(h, 0); return err }, "WaitForSingleObject", "WaitForSingleObject->Win32Error.Win32CallFailed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
