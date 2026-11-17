@@ -10,6 +10,34 @@ import (
 	"github.com/rm4n0s/glutter/ui"
 )
 
+// TestPointerReleaseHasNoButtonDown: the release of a button pressed alone (the secondary
+// and the middle one of Emetos's issue of 2026-11-17, and the primary) has no button down;
+// the press has the button.
+func TestPointerReleaseHasNoButtonDown(t *testing.T) {
+	tests := []struct {
+		name    string
+		code    uint32
+		buttons int
+	}{
+		{"primary", 0x110, 1},
+		{"secondary", 0x111, 2},
+		{"middle", 0x112, 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := NewPointerBatcher(tickingClock(), nil)
+			b.Enter(3, 10, 20)
+			b.Button(tt.code, true)
+			b.Button(tt.code, false)
+			eventsEqual(t, b.Frame(), []ev{
+				{change: ui.PointerChangeAdd, kind: mouse, x: 10, y: 20},
+				{change: ui.PointerChangeDown, kind: mouse, x: 10, y: 20, buttons: tt.buttons},
+				{change: ui.PointerChangeUp, kind: mouse, x: 10, y: 20},
+			})
+		})
+	}
+}
+
 func TestPointerEnterMotionButtonsLeave(t *testing.T) {
 	b := NewPointerBatcher(tickingClock(), nil)
 	b.Enter(3, 10.5, 20)

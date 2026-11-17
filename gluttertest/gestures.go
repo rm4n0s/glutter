@@ -190,7 +190,9 @@ func (g *TestGesture) MoveByAt(by ui.Offset, timeStamp time.Duration) {
 	g.MoveBy(by)
 }
 
-// Up releases the pointer.
+// Up releases the pointer. The release has no button down, whatever the buttons of the
+// press were, as on every platform; a test that wants other buttons on the release sends
+// the event itself.
 //
 // Flutter: flutter_test/lib/src/test_pointer.dart TestGesture.up
 func (g *TestGesture) Up() {
@@ -198,6 +200,7 @@ func (g *TestGesture) Up() {
 	g.requireDown("Up")
 	g.down = false
 	o := g.eventOpts(ui.Offset{})
+	o.Buttons = foundation.Some(0)
 	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerUpEvent(o))
 	g.t.host.RunPosted()
 	if g.addedMouse {
@@ -206,14 +209,17 @@ func (g *TestGesture) Up() {
 	}
 }
 
-// Cancel cancels the pointer, as the system does when it takes the touch away.
+// Cancel cancels the pointer, as the system does when it takes the touch away. As with
+// Up, the event has no button down.
 //
 // Flutter: flutter_test/lib/src/test_pointer.dart TestGesture.cancel
 func (g *TestGesture) Cancel() {
 	g.t.tb.Helper()
 	g.requireDown("Cancel")
 	g.down = false
-	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerCancelEvent(g.eventOpts(ui.Offset{})))
+	o := g.eventOpts(ui.Offset{})
+	o.Buttons = foundation.Some(0)
+	g.t.Binding.Gestures().HandlePointerEvent(gestures.NewPointerCancelEvent(o))
 	g.t.host.RunPosted()
 }
 

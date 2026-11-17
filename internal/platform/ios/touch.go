@@ -118,8 +118,11 @@ func (t *touchTracker) convert(view ui.ViewID, samples []touchSample, scale floa
 			ViewID: view, TimeStamp: s.Time, Change: change, Kind: touchKindOf(s.Kind), Device: device,
 			PhysicalX: s.X * scale, PhysicalY: s.Y * scale, Scale: 1,
 		}
-		if s.Kind == touchIndirectPointer {
-			d.Buttons = 1 // a click of the primary button
+		if s.Kind == touchIndirectPointer && (change == ui.PointerChangeDown || change == ui.PointerChangeMove) {
+			// A click of the primary button. The up and the cancel (and the remove after them)
+			// have no button down: the buttonMask that Flutter reads has none at the end of
+			// the click, and a release on every other platform has none.
+			d.Buttons = 1
 		}
 		if s.Kind == touchPencil {
 			d.Tilt = math.Pi/2 - s.Altitude

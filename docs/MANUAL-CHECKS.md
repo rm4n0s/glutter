@@ -1231,3 +1231,11 @@ Step 48.1 (Glutter 1.17.5) destroys the input context of IBus when an app quits:
 2. Emetos with Glutter 1.17.5, on a desktop with IBus on X11 (Linux Mint, Ubuntu, Fedora's GNOME on X11): focus a text field, type, quit. The terminal has no line `closing the input method failed`. When it has one, send the line.
 
 Answers: _(not yet recorded)_
+
+## 48.2 The release of a gesture in a test
+
+Step 48.2 (Glutter 1.17.5) makes `gluttertest`'s `TestGesture.Up` and `Cancel` send the event with no button down, as the platforms and Flutter do; before, they kept the buttons of the press. The same check of the platforms found iOS giving the click of a mouse or a trackpad on an iPad the primary button at its release too; that is fixed. The tests of `gluttertest`, iOS's touch conversion and Linux's pointer code ran on the Linux machine (they are plain Go); Windows, macOS, the web and Android already had tests of a release. From the module root of Emetos:
+
+1. With Glutter 1.17.5, change `TestTheMenuOpensOverAProgramThatTracksTheMouse` (`extensions/terminal/pane_test.go`) to release the secondary button with `Up()` instead of the event sent by hand, and run it: it passes. Then remove the remembered button (`paneView.reported`) and run it again: it fails, as the desktop did, which says the test now sees what the desktop sends. When either result differs, send the output.
+
+Answers: _(not yet recorded)_

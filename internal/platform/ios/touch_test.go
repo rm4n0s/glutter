@@ -2,6 +2,7 @@ package ios
 
 import (
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -72,6 +73,42 @@ func TestTouchValues(t *testing.T) {
 	click := tr.convert(0, []touchSample{{ID: 4, Phase: touchBegan, Kind: touchIndirectPointer}}, 1)[0]
 	if click.Kind != ui.PointerDeviceKindMouse || click.Buttons != 1 {
 		t.Errorf("click = kind %v buttons %d", click.Kind, click.Buttons)
+	}
+}
+
+// TestTouchReleaseHasNoButtonDown: the click of an indirect pointer (a mouse or a trackpad
+// on an iPad) has the primary button down while it is pressed and none at its up, its
+// cancel and the removes after them, as on every other platform (Emetos's issue of
+// 2026-11-17, which gluttertest had the other way round). A touch has none at any phase,
+// as before: the framework gives a touch's down and moves the primary button.
+func TestTouchReleaseHasNoButtonDown(t *testing.T) {
+	tests := []struct {
+		name string
+		kind touchKind
+		end  touchPhase
+		want []int // the buttons of the down, the move, the end and the remove
+	}{
+		{"click, up", touchIndirectPointer, touchEnded, []int{1, 1, 0, 0}},
+		{"click, cancelled", touchIndirectPointer, touchCancelled, []int{1, 1, 0, 0}},
+		{"finger, up", touchDirect, touchEnded, []int{0, 0, 0, 0}},
+		{"pencil, up", touchPencil, touchEnded, []int{0, 0, 0, 0}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := newTouchTracker()
+			got := tr.convert(0, []touchSample{
+				{ID: 1, Phase: touchBegan, Kind: tt.kind},
+				{ID: 1, Phase: touchMoved, Kind: tt.kind, X: 5},
+				{ID: 1, Phase: tt.end, Kind: tt.kind, X: 5},
+			}, 1)
+			var buttons []int
+			for _, d := range got {
+				buttons = append(buttons, d.Buttons)
+			}
+			if !reflect.DeepEqual(buttons, tt.want) {
+				t.Errorf("buttons = %v, want %v", buttons, tt.want)
+			}
+		})
 	}
 }
 

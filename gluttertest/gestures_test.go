@@ -1,6 +1,8 @@
 package gluttertest
 
 import (
+	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -77,6 +79,50 @@ func TestEventsCarryTheFakeClockAndPosition(t *testing.T) {
 	}
 	if g.Position() != (ui.Offset{Dx: 35, Dy: 30}) {
 		t.Errorf("gesture position = %v", g.Position())
+	}
+}
+
+// TestTheReleaseOfAGestureHasNoButtonDown is Emetos's issue of 2026-11-17: Up sent the
+// buttons of the press, where every platform and Flutter's TestPointer.up send none, so
+// code that read the button of a release from the event passed its tests and failed on a
+// desktop. The press and the moves keep the buttons; the release and the cancel have none.
+func TestTheReleaseOfAGestureHasNoButtonDown(t *testing.T) {
+	tests := []struct {
+		name    string
+		opts    GestureOpts
+		buttons int // of the press and the moves
+	}{
+		{"touch", GestureOpts{}, gestures.PrimaryButton},
+		{"mouse, primary", GestureOpts{Kind: ui.PointerDeviceKindMouse}, gestures.PrimaryButton},
+		{"mouse, secondary", GestureOpts{Kind: ui.PointerDeviceKindMouse, Buttons: foundation.Some(gestures.SecondaryButton)}, gestures.SecondaryButton},
+		{"mouse, middle", GestureOpts{Kind: ui.PointerDeviceKindMouse, Buttons: foundation.Some(gestures.MiddleMouseButton)}, gestures.MiddleMouseButton},
+		{"mouse, two buttons", GestureOpts{Kind: ui.PointerDeviceKindMouse, Buttons: foundation.Some(gestures.PrimaryButton | gestures.SecondaryButton)}, gestures.PrimaryButton | gestures.SecondaryButton},
+		{"stylus, secondary", GestureOpts{Kind: ui.PointerDeviceKindStylus, Buttons: foundation.Some(gestures.SecondaryStylusButton)}, gestures.SecondaryStylusButton},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ts := New(t)
+			var got []string
+			note := func(kind string, buttons int) { got = append(got, kind+"="+strconv.Itoa(buttons)) }
+			l := newListener(newSwatch(grey, 200, 200))
+			l.onDown = func(e *gestures.PointerDownEvent) { note("down", e.Buttons()) }
+			l.onMove = func(e *gestures.PointerMoveEvent) { note("move", e.Buttons()) }
+			l.onUp = func(e *gestures.PointerUpEvent) { note("up", e.Buttons()) }
+			l.onCancel = func(e *gestures.PointerCancelEvent) { note("cancel", e.Buttons()) }
+			ts.PumpWidget(newRow(l))
+
+			g := ts.StartGesture(ui.Offset{Dx: 10, Dy: 10}, tt.opts)
+			g.MoveBy(ui.Offset{Dx: 5})
+			g.Up()
+			g.Down(ui.Offset{Dx: 20, Dy: 20})
+			g.Cancel()
+
+			b := strconv.Itoa(tt.buttons)
+			want := []string{"down=" + b, "move=" + b, "up=0", "down=" + b, "cancel=0"}
+			if strings.Join(got, " ") != strings.Join(want, " ") {
+				t.Errorf("events = %v, want %v", got, want)
+			}
+		})
 	}
 }
 
