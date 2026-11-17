@@ -12,12 +12,17 @@ import (
 )
 
 const (
-	ibusDirectDest     = "org.freedesktop.IBus"
-	ibusDirectIface    = "org.freedesktop.IBus"
-	ibusPortalDest     = "org.freedesktop.portal.IBus"
-	ibusPortalIface    = "org.freedesktop.IBus.Portal"
-	ibusPath           = godbus.ObjectPath("/org/freedesktop/IBus")
-	ibusContextIface   = "org.freedesktop.IBus.InputContext"
+	ibusDirectDest   = "org.freedesktop.IBus"
+	ibusDirectIface  = "org.freedesktop.IBus"
+	ibusPortalDest   = "org.freedesktop.portal.IBus"
+	ibusPortalIface  = "org.freedesktop.IBus.Portal"
+	ibusPath         = godbus.ObjectPath("/org/freedesktop/IBus")
+	ibusContextIface = "org.freedesktop.IBus.InputContext"
+	// ibusServiceIface is the interface that every IBus object extends. Destroy is
+	// declared there, not on InputContext: ibus-daemon and ibus-portal both answer a
+	// Destroy of InputContext with UnknownMethod (IBus 1.5.35, run 2026-11-17).
+	ibusServiceIface   = "org.freedesktop.IBus.Service"
+	dbusUnknownMethod  = "org.freedesktop.DBus.Error.UnknownMethod"
 	ibusPropertiesSet  = "org.freedesktop.DBus.Properties.Set"
 	ibusCapPreedit     = 1 << 0
 	ibusCapFocus       = 1 << 3
@@ -127,7 +132,7 @@ func openIBus(ctx context.Context, session Bus, opts IMEOptions, events func(IME
 	sigs, err := bus.Subscribe(subCtx, SignalMatch{Path: path, Interface: ibusContextIface})
 	if err != nil {
 		cancel()
-		_, _ = bus.Call(ctx, dest, path, ibusContextIface+".Destroy") // best effort: the context is not used
+		_, _ = bus.Call(ctx, dest, path, ibusServiceIface+".Destroy") // best effort: the context is not used
 		closeOwned()
 		return nil, err
 	}
@@ -200,12 +205,17 @@ func (c *ibusContext) ProcessKey(ctx context.Context, key IMEKey) (bool, error) 
 	return handled, nil
 }
 
+// Close destroys the input context, stops the events and closes the private bus, if
+// there is one.
 func (c *ibusContext) Close() error {
 	var err error
 	c.closeOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), portalCloseTimeout)
 		defer cancel()
-		_, err = c.call(ctx, "Destroy")
+		_, err = c.bus.Call(ctx, c.dest, c.path, ibusServiceIface+".Destroy")
+		if destroyedAnyway(err) {
+			err = nil
+		}
 		c.cancel()
 		<-c.done
 		if c.owned != nil {
@@ -215,6 +225,27 @@ func (c *ibusContext) Close() error {
 		}
 	})
 	return err
+}
+
+// destroyedAnyway reports whether err, the answer to Destroy, leaves nothing to do:
+// org.freedesktop.DBus.Error.UnknownMethod. ibus-portal gives it after it destroyed the
+// context (its handler of Destroy frees the context and returns FALSE, so GDBus also
+// answers "Method Destroy is not implemented"; IBus 1.5.35, portal/portal.c
+// ibus_portal_context_handle_destroy), and a bus gives it for a context that is gone
+// ("Object does not exist"). An IBus that has no Destroy at all drops the context
+// when the connection ends, which is all there is left to do.
+func destroyedAnyway(err error) bool {
+	if err == nil {
+		return false
+	}
+	// A reply of the bus is a godbus.Error; a *godbus.Error is what an exported method
+	// (and the fake bus) gives.
+	var reply godbus.Error
+	if errors.As(err, &reply) {
+		return reply.Name == dbusUnknownMethod
+	}
+	var returned *godbus.Error
+	return errors.As(err, &returned) && returned.Name == dbusUnknownMethod
 }
 
 // run turns the signals of the input context into events, until the

@@ -17,7 +17,9 @@ const (
 	ibusCtxPath  = godbus.ObjectPath("/org/freedesktop/IBus/InputContext_1")
 	fcitxCtxPath = godbus.ObjectPath("/org/freedesktop/portal/inputmethod/ctx1")
 	ibusCtxIface = "org.freedesktop.IBus.InputContext"
-	fcitxIface   = "org.fcitx.Fcitx.InputContext1"
+	// ibusServiceIface is where IBus declares Destroy.
+	ibusServiceIface = "org.freedesktop.IBus.Service"
+	fcitxIface       = "org.fcitx.Fcitx.InputContext1"
 )
 
 // nameOwners makes the fake bus answer NameHasOwner for the names.
@@ -40,9 +42,10 @@ func ibusService(b *fakebus.Bus, dest, iface string, handlers map[string]fakebus
 	b.Handle(dest, "/org/freedesktop/IBus", iface+".CreateInputContext", func(fakebus.Call) ([]any, error) {
 		return []any{ibusCtxPath}, nil
 	})
-	for _, m := range []string{"SetCapabilities", "FocusIn", "FocusOut", "Reset", "SetCursorLocation", "SetSurroundingText", "Destroy"} {
+	for _, m := range []string{"SetCapabilities", "FocusIn", "FocusOut", "Reset", "SetCursorLocation", "SetSurroundingText"} {
 		b.Handle(dest, ibusCtxPath, ibusCtxIface+"."+m, ok)
 	}
+	b.Handle(dest, ibusCtxPath, ibusServiceIface+".Destroy", ok)
 	b.Handle(dest, ibusCtxPath, "org.freedesktop.DBus.Properties.Set", ok)
 	for m, h := range handlers {
 		b.Handle(dest, ibusCtxPath, ibusCtxIface+"."+m, h)
@@ -425,23 +428,75 @@ func TestIBusSignalsBecomeEvents(t *testing.T) {
 }
 
 func TestIBusCloseDestroysTheContextAndStopsTheEvents(t *testing.T) {
-	bus := fakebus.New(":1.1")
-	nameOwners(bus, "org.freedesktop.portal.IBus")
-	ibusService(bus, "org.freedesktop.portal.IBus", "org.freedesktop.IBus.Portal", nil)
-	log := newEventLog()
-	im, err := dbus.OpenInputMethod(context.Background(), bus, dbus.IMEOptions{Hint: "ibus"}, log.add)
-	if err != nil {
-		t.Fatal(err)
+	unknownMethod := func(text string) fakebus.Handler {
+		return func(fakebus.Call) ([]any, error) {
+			return nil, rmerrors.NewErr(tagDBusCallFailed, &godbus.Error{Name: "org.freedesktop.DBus.Error.UnknownMethod", Body: []any{text}})
+		}
 	}
-	waitSubscribers(t, bus, 1)
-	if err := im.Close(); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name string
+		// direct is whether the context is on the private bus of ibus-daemon.
+		direct  bool
+		destroy fakebus.Handler
+		wantErr bool
+	}{
+		{name: "portal", destroy: ok},
+		{name: "private bus", direct: true, destroy: ok},
+		// ibus-portal destroys the context and then answers that Destroy is not implemented
+		// (IBus 1.5.35); the context is gone, so there is nothing to report.
+		{name: "portal answers not implemented", destroy: unknownMethod("Method Destroy is not implemented on interface org.freedesktop.IBus.Service")},
+		// A real bus gives the error as a godbus.Error, not a pointer.
+		{name: "context already gone", direct: true, destroy: func(fakebus.Call) ([]any, error) {
+			return nil, rmerrors.NewErr(tagDBusCallFailed, godbus.Error{Name: "org.freedesktop.DBus.Error.UnknownMethod", Body: []any{"Object does not exist"}})
+		}},
+		{name: "another failure is reported", destroy: func(fakebus.Call) ([]any, error) {
+			return nil, rmerrors.NewErr(tagDBusCallFailed, &godbus.Error{Name: "org.freedesktop.DBus.Error.Failed", Body: []any{"no"}})
+		}, wantErr: true},
 	}
-	if n := len(callsTo(bus, ibusCtxIface+".Destroy")); n != 1 {
-		t.Errorf("%d Destroy calls, want 1", n)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bus := fakebus.New(":1.1")
+			opts := dbus.IMEOptions{Hint: "ibus"}
+			dest := "org.freedesktop.portal.IBus"
+			if tt.direct {
+				dest = "org.freedesktop.IBus"
+				ibusService(bus, dest, "org.freedesktop.IBus", nil)
+				opts.IBusBus = func(context.Context) (dbus.Bus, error) { return keepOpenBus{bus}, nil }
+			} else {
+				nameOwners(bus, dest)
+				ibusService(bus, dest, "org.freedesktop.IBus.Portal", nil)
+			}
+			bus.Handle(dest, ibusCtxPath, ibusServiceIface+".Destroy", tt.destroy)
+			log := newEventLog()
+			ctx, cancel := context.WithCancel(context.Background())
+			im, err := dbus.OpenInputMethod(ctx, bus, opts, log.add)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitSubscribers(t, bus, 1)
+			cancel() // the bridge's context ends before it closes the input method
+			err = im.Close()
+			if tt.wantErr {
+				assertTag(t, err, tagDBusCallFailed)
+			} else if err != nil {
+				t.Fatalf("Close: %v", err)
+			}
+			if n := len(callsTo(bus, ibusServiceIface+".Destroy")); n != 1 {
+				t.Errorf("%d Destroy calls on %s, want 1", n, ibusServiceIface)
+			}
+			if n := len(callsTo(bus, ibusCtxIface+".Destroy")); n != 0 {
+				t.Errorf("%d Destroy calls on %s, which IBus does not have", n, ibusCtxIface)
+			}
+			waitSubscribers(t, bus, 0)
+		})
 	}
-	waitSubscribers(t, bus, 0)
 }
+
+// keepOpenBus is a bus whose Close does nothing, so that a test can look at the calls
+// after the input method closed its private bus.
+type keepOpenBus struct{ dbus.Bus }
+
+func (keepOpenBus) Close() error { return nil }
 
 func TestFcitxCalls(t *testing.T) {
 	bus := fakebus.New(":1.1")
@@ -681,3 +736,7 @@ func TestIBusAddress(t *testing.T) {
 	_, err := dbus.IBusAddress(func(k string) string { return map[string]string{"XDG_CONFIG_HOME": "/cfg"}[k] }, read, "x11")
 	assertTag(t, err, "IBusAddress.IBusAddressNotFound")
 }
+
+// tagDBusCallFailed is the tag of a failed call, which the fake answers of IBus give as
+// the real bus does.
+const tagDBusCallFailed = "DBusCallFailed"

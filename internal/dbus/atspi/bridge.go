@@ -271,8 +271,8 @@ func (b *Bridge) connect(ctx context.Context, session dbus.Bus) error {
 	if !ok || address == "" {
 		return errors.New(tagA11yAddressInvalid, "org.a11y.Bus.GetAddress did not give an address", "reply", reply)
 	}
-	// The connection lives as long as ctx, that is, as the bridge (dbus.ConnectAddress ties
-	// the connection to its context).
+	// The connection outlives ctx (dbus.ConnectAddress does not tie it to its context):
+	// disconnect closes it, which setEnabled(false) does when run ends.
 	a11y, err := b.opts.OpenA11y(ctx, address)
 	if err != nil {
 		return err

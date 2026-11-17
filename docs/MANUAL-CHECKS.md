@@ -1222,3 +1222,12 @@ Step 46.1 (Glutter 1.17.4) lets the coverage atlas of the GPU renderers grow for
 **On a Mac** these are step 47.1, the Mac agent's: it runs the Metal test, which was written on Linux and has **never run**, and writes and runs the Simulator test. To try the Metal test by hand: `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' -run DrawsAFrameThatFillsTheAtlas -v ./internal/gpu/metal` (with `GLUTTER_TEST_DUMP=/some/dir` in front it writes the frame as `metal-many-shadows.png`: ten soft shadows of panels on white, one inside the other).
 
 Answers: _(not yet recorded)_
+
+## 48.1 Quitting with IBus
+
+Step 48.1 (Glutter 1.17.5) destroys the input context of IBus when an app quits: the private bus of IBus no longer closes when the input method's context ends, and the context is destroyed with `Destroy` of `org.freedesktop.IBus.Service`, where IBus has it. On the Linux machine the test of the real IBus (IBus 1.5.35: ibus-daemon on a private bus, ibus-portal on a private session bus) passed for both ways of reaching IBus, and failed before the fix with the two errors of Emetos's report. IBus is only on the Linux desktop, so no other platform has a test. From the module root:
+
+1. `go test -tags glutter_ibus -run RealIBus -v ./internal/dbus` on a machine with IBus installed (it starts an IBus of its own and does not touch the desktop's): both subtests pass. When it fails, send its whole output.
+2. Emetos with Glutter 1.17.5, on a desktop with IBus on X11 (Linux Mint, Ubuntu, Fedora's GNOME on X11): focus a text field, type, quit. The terminal has no line `closing the input method failed`. When it has one, send the line.
+
+Answers: _(not yet recorded)_

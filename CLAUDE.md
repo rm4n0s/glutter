@@ -17,6 +17,7 @@ Glutter is a cgo-free GUI toolkit for Go (Android, from 1.6, is the one exceptio
 - The display tests under one X server (from step 32.2): `scripts/headless-x11.sh -- go test -p 1 -race -tags 'glutter_display debug_mode' ./internal/engine ./internal/platform/linux/x11 ./internal/gpu/shmwindow`; `-p 1` because the tests of the `x11` package change the `Xft.dpi` of the server, which every other client of it (the apps that the `engine` tests start) sees, and a run of the packages side by side failed once in about twenty.
 - Web build and checks (from step 19.1): `GOOS=js GOARCH=wasm go build ./...`, `GOOS=js GOARCH=wasm go vet ./...`, `scripts/test-wasm.sh` and `scripts/test-wasm.sh -tags debug_mode` (unit tests under Node, in both modes)
 - Tests in a headless browser: `go test -tags 'glutter_browser debug_mode' ./...` (SPEC §17)
+- IBus tests (from step 48.1): `go test -tags glutter_ibus -run RealIBus -v ./internal/dbus` (the real `ibus-daemon` and `ibus-portal` on private buses with a temporary home; they skip without IBus; SPEC §17)
 - Run an example on the web: `go run ./cmd/glutter-web serve ./examples/counter`
 - Android check (from step 25.1): `scripts/check-android.sh` (build and vet for android/arm64 and android/amd64 with the NDK; needs `ANDROID_HOME`)
 - Tests on the Android emulator (from step 25.2): `go test -p 1 -tags 'glutter_android debug_mode' ./...` (SPEC §24.13; they start and stop the emulator themselves)
@@ -175,6 +176,7 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - Golden tests render through the software renderer (`internal/gpu/soft`), so they are deterministic and need no GPU
 - Tests that open real windows or GL contexts carry the `glutter_display` build tag and are skipped by the default test run. Vulkan display tests use Mesa's lavapipe with validation on (SPEC §17)
 - Tests that run in a headless browser carry the `glutter_browser` build tag; they use `internal/webtest` and temporary browser profiles
+- Tests that run the real IBus carry the `glutter_ibus` build tag (they start `ibus-daemon` and `ibus-portal` on private buses themselves, and skip without them)
 - Tests that need an audio server carry the `glutter_audio` build tag and run under `scripts/headless-audio.sh`; they skip without it
 - Tests that run on the Android emulator carry the `glutter_android` build tag; they use `internal/androidtest`. What only a real phone shows is a manual check (SPEC §24.13)
 - Tests that run inside Wine carry the `glutter_wine` build tag; `scripts/test-windows.sh` runs the unit tests of the packages that build for Windows under Wine

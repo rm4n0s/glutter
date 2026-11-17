@@ -2,9 +2,12 @@ package dbus_test
 
 import (
 	"context"
+	"net"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/rm4n0s/glutter/internal/dbus"
@@ -71,7 +74,13 @@ func (s *ibusServer) SetCapabilities(c uint32) *godbus.Error {
 func (s *ibusServer) FocusIn() *godbus.Error  { s.note("FocusIn"); return nil }
 func (s *ibusServer) FocusOut() *godbus.Error { s.note("FocusOut"); return nil }
 func (s *ibusServer) Reset() *godbus.Error    { s.note("Reset"); return nil }
-func (s *ibusServer) Destroy() *godbus.Error  { s.note("Destroy"); return nil }
+
+// destroyer serves Destroy on org.freedesktop.IBus.Service, the only interface where IBus
+// has it: the input context interface has none.
+type destroyer struct{ s *ibusServer }
+
+func (d destroyer) Destroy() *godbus.Error { d.s.note("Destroy"); return nil }
+
 func (s *ibusServer) SetCursorLocation(x, y, w, h int32) *godbus.Error {
 	s.note("SetCursorLocation")
 	return nil
@@ -117,6 +126,7 @@ func startIBusPortal(t *testing.T, addr string) (*ibusServer, *godbus.Conn) {
 	}
 	must(conn.Export(s, "/org/freedesktop/IBus", "org.freedesktop.IBus.Portal"))
 	must(conn.Export(s, ibusCtxPath, ibusCtxIface))
+	must(conn.Export(destroyer{s}, ibusCtxPath, ibusServiceIface))
 	must(conn.Export(s, ibusCtxPath, "org.freedesktop.DBus.Properties"))
 	reply, err := conn.RequestName("org.freedesktop.portal.IBus", godbus.NameFlagDoNotQueue)
 	must(err)
@@ -356,5 +366,46 @@ func TestConnectAddress(t *testing.T) {
 	}
 
 	_, err = dbus.ConnectAddress(context.Background(), "unix:path=/nonexistent/socket")
-	assertTag(t, err, "ConnectAddress.DBusAddressDialFailed")
+	// The dial runs on a goroutine of dialWithoutContext, so the route starts there.
+	assertTag(t, err, "dialWithoutContext.func1->ConnectAddress.func1.DBusAddressDialFailed")
+
+	// A socket that hangs up at once: the authentication fails.
+	socket := filepath.Join(t.TempDir(), "hangup")
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() }) // the test is over
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return // closed at the end of the test
+			}
+			_ = c.Close() // hang up
+		}
+	}()
+	_, err = dbus.ConnectAddress(context.Background(), "unix:path="+socket)
+	assertTag(t, err, "dialWithoutContext.func1->ConnectAddress.func1.DBusAddressAuthFailed")
+}
+
+// TestConnectAddressOutlivesItsContext is Emetos's issue of 2026-11-17: the input method
+// bridge opens the private bus of IBus with its own context, cancels it when the app quits
+// and then destroys the input context on that bus. The connection must still be open.
+func TestConnectAddressOutlivesItsContext(t *testing.T) {
+	addr := startPrivateBus(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	bus, err := dbus.ConnectAddress(ctx, addr)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bus.Close() }) // the test is over
+	cancel()
+	time.Sleep(50 * time.Millisecond) // godbus closed a connection made with ctx at once
+	callCtx, callCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer callCancel()
+	if _, err := bus.Call(callCtx, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.GetId"); err != nil {
+		t.Fatalf("a call after the context of the connection ended: %v", err)
+	}
 }

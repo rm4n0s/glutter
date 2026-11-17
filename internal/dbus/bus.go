@@ -304,22 +304,35 @@ func (c *sessionBus) Close() error {
 
 // ConnectAddress opens a bus at an address, such as the private bus of the IBus
 // daemon ("unix:path=/run/user/1000/ibus/dbus-xyz,guid=..."). The connection
-// is private to the caller; close it with Close. It fails with
-// DBusAddressDialFailed, DBusAddressAuthFailed or DBusAddressHelloFailed.
+// is private to the caller; close it with Close. As with Connect, ctx bounds the wait for
+// the connection (the dial, the authentication and the Hello), and nothing else: the
+// connection does not end with it, so that a caller can still use it, to destroy what it
+// made there, after its own context ended. It fails with DBusAddressDialFailed,
+// DBusAddressAuthFailed or DBusAddressHelloFailed, and with DBusConnectFailed when ctx
+// ends first.
 //
 // Flutter: no counterpart
 func ConnectAddress(ctx context.Context, address string) (Bus, error) {
-	conn, err := godbus.Dial(address, godbus.WithContext(ctx))
+	conn, err := dialWithoutContext(ctx, func(connCtx context.Context) (*godbus.Conn, error) {
+		conn, err := godbus.Dial(address, godbus.WithContext(connCtx))
+		if err != nil {
+			return nil, errors.NewErr(tagDBusAddressDialFailed, err).SetMetadata("address", address)
+		}
+		if err := conn.Auth(nil); err != nil {
+			_ = conn.Close() // the authentication error is the one to report
+			return nil, errors.NewErr(tagDBusAddressAuthFailed, err).SetMetadata("address", address)
+		}
+		if err := conn.Hello(); err != nil {
+			_ = conn.Close() // the hello error is the one to report
+			return nil, errors.NewErr(tagDBusAddressHelloFailed, err).SetMetadata("address", address)
+		}
+		return conn, nil
+	})
 	if err != nil {
-		return nil, errors.NewErr(tagDBusAddressDialFailed, err).SetMetadata("address", address)
-	}
-	if err := conn.Auth(nil); err != nil {
-		_ = conn.Close() // the authentication error is the one to report
-		return nil, errors.NewErr(tagDBusAddressAuthFailed, err).SetMetadata("address", address)
-	}
-	if err := conn.Hello(); err != nil {
-		_ = conn.Close() // the hello error is the one to report
-		return nil, errors.NewErr(tagDBusAddressHelloFailed, err).SetMetadata("address", address)
+		if appErr, ok := errors.FromError(err); ok && appErr.Tag == TagConnectFailed {
+			_ = appErr.SetMetadata("address", address) // adds to the error in place
+		}
+		return nil, err
 	}
 	return &sessionBus{conn: conn}, nil
 }
