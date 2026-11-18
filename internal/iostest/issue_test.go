@@ -60,3 +60,20 @@ func TestIOSDrawsAFrameThatFillsTheAtlas(t *testing.T) {
 		t.Error(problem)
 	}
 }
+
+// TestIOSKeepsTheMipmapsOfAPicture runs the reproduction of Fishball's issue of step 49.1 (internal/issues, soft-mipmaps) with the
+// software renderer of iOS, in an app that draws its frames with shmwindow into the window's IOSurfaces as the engine does (step
+// 50.1). The check is the one of every other platform.
+func TestIOSKeepsTheMipmapsOfAPicture(t *testing.T) {
+	out := runIssue(t, issues.SoftMipmapsName)
+	rep, err := issues.ParseSoftMipmaps(out)
+	if err != nil {
+		t.Fatalf("the report: %+v", err)
+	}
+	for _, line := range rep.Lines() {
+		t.Log(line)
+	}
+	for _, problem := range rep.Problems() {
+		t.Error(problem)
+	}
+}

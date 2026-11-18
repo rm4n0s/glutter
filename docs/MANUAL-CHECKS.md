@@ -1254,4 +1254,7 @@ Step 49.1 (Glutter 1.17.6) makes the software renderer keep the mipmap chain of 
 
 2. `go test -tags glutter_wine -run KeepsTheMipmapsOfAPicture -v ./internal/gpu/gdiwindow`: it opens a window for a moment and should pass, with the eight lines in its output. When it fails, send its whole output.
 
-Answers: _(not yet recorded)_
+Answers:
+- **On a Mac** (step 50.1, 2026-11-18, the Mac agent on the owner's Mac with macOS 27.2 and Xcode's iOS 27.2 Simulator): `engine.TestDisplayKeepsTheMipmapsOfAPicture` (macOS, `shmwindow` into the window's IOSurfaces at the screen's scale) and `iostest.TestIOSKeepsTheMipmapsOfAPicture` (the Simulator, `internal/iostest/issueapp`) passed on their first runs, with the eight lines of the other platforms: `built 1` in the first frame and in "another picture", `built 0` in every other, `chains 2` at the end, and the same hashes on both (the picture `aaf9d264…145c8c`, then `9056e577…a56d31`; the spinner of the first frame `f3e73d27…9a051d64`). The macOS display tests of the software renderer (`-run Soft`) passed.
+- Fishball: _(not yet recorded)_
+- Windows PC: _(not yet recorded)_
