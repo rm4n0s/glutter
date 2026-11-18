@@ -325,7 +325,7 @@ func TestUnsupportedKindsAreNotImplemented(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			img := image.NewRGBA(image.Rect(0, 0, 4, 4))
-			r := &renderer{img: img, mips: map[*ui.Image][]*mipLevel{}}
+			r := &renderer{img: img, cache: NewCache()}
 			err := tt.do(r, &state{m: ui.NewMatrix4Identity(), clip: newClip(img.Rect)})
 			appErr, ok := errors.FromError(err)
 			if !ok {

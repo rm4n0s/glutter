@@ -155,9 +155,9 @@ func TestDrawImageMipmaps(t *testing.T) {
 }
 
 func TestMipLevels(t *testing.T) {
-	r := &renderer{mips: map[*ui.Image][]*mipLevel{}}
+	c := NewCache()
 	img := imageFunc(5, 3, func(x, y int) [4]uint8 { return [4]uint8{100, 100, 100, 100} })
-	chain := r.levels(img)
+	chain := c.levels(img, 2)
 	var sizes [][2]int
 	for _, l := range chain {
 		sizes = append(sizes, [2]int{l.w, l.h})
@@ -176,7 +176,7 @@ func TestMipLevels(t *testing.T) {
 			t.Errorf("a flat image changed to %d at %dx%d", got, l.w, l.h)
 		}
 	}
-	if again := r.levels(img); &again[0] != &chain[0] {
+	if again := c.levels(img, 2); &again[0] != &chain[0] {
 		t.Error("the chain is not cached")
 	}
 }

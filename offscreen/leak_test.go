@@ -35,6 +35,35 @@ func TestLeaksOffscreen(t *testing.T) {
 				i++
 			}
 		}},
+		{"surface, a new picture under a spinner for each frame", 300, func(t *testing.T) func() {
+			// The surface keeps the mipmap chains of the pictures it scales down (step 49.1): the
+			// chain of a picture whose handle is disposed goes at the end of the next frame.
+			s := offscreen.NewSurface(320, 240)
+			var prev *ui.Image
+			i := 0
+			return func() {
+				img := picture(256, 192, uint8(i))
+				if _, err := s.Draw(pictureUnderSpinner(img, i)); err != nil {
+					t.Fatal(err)
+				}
+				if prev != nil {
+					prev.Dispose()
+				}
+				prev = img
+				i++
+			}
+		}},
+		{"surface, a spinner over the same picture", 300, func(t *testing.T) func() {
+			s := offscreen.NewSurface(320, 240)
+			img := picture(256, 192, 7)
+			i := 0
+			return func() {
+				if _, err := s.Draw(pictureUnderSpinner(img, i)); err != nil {
+					t.Fatal(err)
+				}
+				i++
+			}
+		}},
 		{"detacher, a new scene for each frame", 300, func(t *testing.T) func() {
 			on, off := editorscene.CaretScenes(t, 200)
 			d := offscreen.NewDetacher()
@@ -102,4 +131,38 @@ func TestLeaksOffscreen(t *testing.T) {
 			leaktest.Run(t, "offscreen/"+tt.name, func() func() { return tt.step(t) }, leaktest.Opts{N: tt.n})
 		})
 	}
+}
+
+// picture is an image of w x h pixels of blocks of 16 pixels in two colors that seed changes.
+func picture(w, h int, seed uint8) *ui.Image {
+	pix := make([]byte, 4*w*h)
+	for y := range h {
+		for x := range w {
+			c := [4]uint8{200, seed, 40, 255}
+			if (x/16+y/16)%2 == 1 {
+				c = [4]uint8{20, 90, seed, 255}
+			}
+			copy(pix[4*(y*w+x):], c[:])
+		}
+	}
+	return ui.NewImageFromRGBA(pix, w, h)
+}
+
+// pictureUnderSpinner draws the image at half its size with mipmaps and a square turned by turn
+// over it.
+func pictureUnderSpinner(img *ui.Image, turn int) *ui.Scene {
+	rec := ui.NewPictureRecorder()
+	c := ui.NewCanvas(rec)
+	w, h := float64(img.Width()), float64(img.Height())
+	p := ui.NewPaint()
+	p.SetFilterQuality(ui.FilterQualityMedium)
+	c.DrawImageRect(img, ui.NewRectFromLTWH(0, 0, w, h), ui.NewRectFromLTWH(0, 0, w/2, h/2), p)
+	c.Translate(w/4, h/4)
+	c.Rotate(float64(turn) * 0.4)
+	sp := ui.NewPaint()
+	sp.SetColor(ui.NewColor(0xFF2060FF))
+	c.DrawRect(ui.NewRectFromLTWH(-10, -10, 20, 20), sp)
+	sb := ui.NewSceneBuilder()
+	sb.AddPicture(ui.Offset{}, rec.EndRecording())
+	return sb.Build()
 }

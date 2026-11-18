@@ -33,6 +33,24 @@ type SoftStats struct {
 	Mismatches []string
 	// Describe is the name of the renderer once it drew, as the log says it.
 	Describe string
+	// KeepFrames asks for Kept: each frame's scene, the buffer on display and what the renderer's
+	// cache of mipmap chains says after it (step 49.1).
+	KeepFrames bool        `json:"-"`
+	Kept       []SoftFrame `json:"-"`
+	// Current is the number the app gives the frame it draws now, kept in SoftFrame.Index.
+	Current int `json:"-"`
+}
+
+// SoftFrame is one frame that a checked software renderer drew (SoftStats.KeepFrames).
+type SoftFrame struct {
+	// Index is SoftStats.Current when the frame was drawn (the engine draws a scene of its own
+	// that holds the app's), and Scene the scene the renderer was given.
+	Index int
+	Scene *ui.Scene
+	// Shown is the buffer on display after the frame, as RGBA.
+	Shown *image.RGBA
+	// Chains and Built are soft.CacheStats's of the renderer after the frame.
+	Chains, Built int
 }
 
 // CheckSoftRenderer replaces the renderer of cfg by the software renderer of the Linux desktop with
@@ -115,6 +133,15 @@ func (r *checkedSoft) Draw(h gpu.SurfaceHandle, width, height int, scene *ui.Sce
 	if len(shown) < 4*width*height || r.rec.w != width || r.rec.h != height {
 		r.stats.Mismatches = append(r.stats.Mismatches, fmt.Sprintf("frame %d: no buffer of %dx%d on display", r.stats.Frames, width, height))
 		return img, nil
+	}
+	if r.stats.KeepFrames {
+		f := SoftFrame{Index: r.stats.Current, Scene: scene, Shown: image.NewRGBA(image.Rect(0, 0, width, height))}
+		for i := 0; i < len(f.Shown.Pix); i += 4 {
+			f.Shown.Pix[i], f.Shown.Pix[i+1], f.Shown.Pix[i+2], f.Shown.Pix[i+3] = shown[i+2], shown[i+1], shown[i], 0xFF
+		}
+		st := r.inner.renderer.MipmapStats()
+		f.Chains, f.Built = st.Chains, st.Built
+		r.stats.Kept = append(r.stats.Kept, f)
 	}
 	for i := 0; i < 4*width*height; i += 4 {
 		if shown[i] != ref.Pix[i+2] || shown[i+1] != ref.Pix[i+1] || shown[i+2] != ref.Pix[i] {

@@ -37,9 +37,17 @@ type Renderer struct {
 	present Presenter
 	bg      [3]uint8
 	closed  bool
+	// cache keeps the mipmap chains of the images from one frame to the next.
+	cache *soft.Cache
 }
 
 var _ gpu.Renderer = (*Renderer)(nil)
+
+// MipmapStats returns what the renderer's cache of the mipmap chains of images holds and has done
+// (soft.Cache.Stats): a picture scaled down in frame after frame is made smaller once.
+//
+// Flutter: no counterpart
+func (r *Renderer) MipmapStats() soft.CacheStats { return r.cache.Stats() }
 
 // NewRenderer makes a renderer that presents through p. More than one options value panics
 // with MultipleOptions.
@@ -54,7 +62,7 @@ func NewRenderer(p Presenter, opts ...Options) *Renderer {
 	default:
 		panic(errors.New(tagMultipleOptions, "NewRenderer takes at most one Options value", "count", len(opts)))
 	}
-	return &Renderer{present: p, bg: [3]uint8{uint8(o.Background.Red()), uint8(o.Background.Green()), uint8(o.Background.Blue())}}
+	return &Renderer{present: p, bg: [3]uint8{uint8(o.Background.Red()), uint8(o.Background.Green()), uint8(o.Background.Blue())}, cache: soft.NewCache()}
 }
 
 // surface is the surface of one window.
@@ -124,7 +132,8 @@ func (r *Renderer) frame(scene *ui.Scene, width, height int) (*image.RGBA, error
 	if scene == nil {
 		scene = ui.NewSceneBuilder().Build()
 	}
-	img, err := soft.Render(scene, width, height)
+	img, err := r.cache.Render(scene, width, height)
+	r.cache.EndFrame()
 	if err != nil {
 		return nil, err
 	}

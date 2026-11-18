@@ -1239,3 +1239,17 @@ Step 48.2 (Glutter 1.17.5) makes `gluttertest`'s `TestGesture.Up` and `Cancel` s
 1. With Glutter 1.17.5, change `TestTheMenuOpensOverAProgramThatTracksTheMouse` (`extensions/terminal/pane_test.go`) to release the secondary button with `Up()` instead of the event sent by hand, and run it: it passes. Then remove the remembered button (`paneView.reported`) and run it again: it fails, as the desktop did, which says the test now sees what the desktop sends. When either result differs, send the output.
 
 Answers: _(not yet recorded)_
+
+## 49.1 The software renderer keeps the mipmaps of a picture
+
+Step 49.1 (Glutter 1.17.6) makes the software renderer keep the mipmap chain of a picture it scales down from one frame to the next, as the GPU renderers keep their textures, so a spinner over a picture no longer makes the picture smaller again in every frame (Fishball's issue of 2026-11-18). Every platform's software renderer keeps one cache: Linux, macOS and iOS (`shmwindow`), Windows (`gdiwindow`), Android (`nativewindow`), the web (`canvas2d`) and `offscreen.Surface`. On the Linux machine the reproduction (`internal/issues`, `soft-mipmaps`: a spinner turning over a picture of 1024x768 drawn at half its size, another picture, the first again) passed on Wayland and X11 (MIT-SHM and XPutImage), in a window under Wine, on the Android emulator and in Chromium and Firefox. Every test logs eight lines `soft-mipmaps: frame "..." built N chains M ...`: `built 1` in the first frame and in "another picture", `built 0` in every other, and `chains 2` at the end. macOS and iOS are step 50.1, the Mac agent's. From the module root:
+
+**In Fishball**
+
+1. Run Fishball with Glutter 1.17.6 on the software renderer (`GLUTTER_RENDERER=soft`) and show the spinner over a picture (`kit.Busy` while the next picture is made). With `GLUTTER_FRAME_STATS=1`, the frames of the spinner should take well under the 5 ms that the mipmaps took before, and the Go heap should not grow by about 1.3 MB a frame. If they do not, send the frame stats and say how the picture is drawn (its size on screen, its `FilterQuality`).
+
+**On a Windows PC** (the test passed under Wine)
+
+2. `go test -tags glutter_wine -run KeepsTheMipmapsOfAPicture -v ./internal/gpu/gdiwindow`: it opens a window for a moment and should pass, with the eight lines in its output. When it fails, send its whole output.
+
+Answers: _(not yet recorded)_

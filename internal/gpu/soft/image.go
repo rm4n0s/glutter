@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -13,35 +14,10 @@ type mipLevel struct {
 	pix  []byte
 }
 
-// levels returns the mipmap chain of the image, the image itself first. Each
-// level halves the one before, rounding up, and averages 2x2 pixels.
-func (r *renderer) levels(img *ui.Image) []*mipLevel {
-	if l, ok := r.mips[img]; ok {
-		return l
-	}
-	chain := []*mipLevel{{w: img.Width(), h: img.Height(), pix: img.Pixels()}}
-	for {
-		prev := chain[len(chain)-1]
-		if prev.w == 1 && prev.h == 1 {
-			break
-		}
-		next := &mipLevel{w: max(prev.w/2, 1), h: max(prev.h/2, 1)}
-		next.pix = make([]byte, 4*next.w*next.h)
-		for y := 0; y < next.h; y++ {
-			for x := 0; x < next.w; x++ {
-				x0, y0 := min(2*x, prev.w-1), min(2*y, prev.h-1)
-				x1, y1 := min(2*x+1, prev.w-1), min(2*y+1, prev.h-1)
-				for k := 0; k < 4; k++ {
-					sum := int(prev.pix[4*(y0*prev.w+x0)+k]) + int(prev.pix[4*(y0*prev.w+x1)+k]) +
-						int(prev.pix[4*(y1*prev.w+x0)+k]) + int(prev.pix[4*(y1*prev.w+x1)+k])
-					next.pix[4*(y*next.w+x)+k] = byte((sum + 2) / 4)
-				}
-			}
-		}
-		chain = append(chain, next)
-	}
-	r.mips[img] = chain
-	return chain
+// level returns level n of the image's mipmap chain (0 is the image itself), from the cache of the
+// renderer, which makes it when it has not.
+func (r *renderer) level(img *ui.Image, n int) *mipLevel {
+	return r.cache.levels(img, n)[n]
 }
 
 // tiling says what a texel lookup outside the image gives on each axis; the zero
@@ -204,15 +180,14 @@ func (r *renderer) blit(img *ui.Image, src ui.Rect, toDevice affine, p *ui.Paint
 		mask = threshold(mask)
 	}
 	quality := p.FilterQuality()
-	chain := r.levels(img)
+	w0, h0 := img.Width(), img.Height()
 	level := 0
 	if quality == ui.FilterQualityMedium || quality == ui.FilterQualityHigh {
 		if scale := math.Sqrt(math.Abs(toDevice.det())); scale > 0 && scale < 1 {
-			level = min(int(-math.Log2(scale)+0.5), len(chain)-1)
+			level = min(int(-math.Log2(scale)+0.5), gpu.MipLevels(w0, h0)-1)
 		}
 	}
-	w0, h0 := img.Width(), img.Height()
-	l := chain[level]
+	l := r.level(img, level)
 	r.composite(mask, st.clip, paintSetup{mode: comp.mode, src: func(x, y int) rgba {
 		pt := inv.apply(float64(x)+0.5, float64(y)+0.5)
 		c := l.sample(pt.Dx, pt.Dy, w0, h0, quality, tiling{})

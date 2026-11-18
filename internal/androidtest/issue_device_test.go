@@ -105,3 +105,33 @@ func TestAndroidDrawsAFrameThatFillsTheAtlas(t *testing.T) {
 		})
 	}
 }
+
+// TestAndroidKeepsTheMipmapsOfAPicture runs, with the software renderer of Android into the window's
+// buffers on the emulator, the reproduction of Fishball's issue of step 49.1 (internal/issues,
+// soft-mipmaps): a spinner turns over a picture that is drawn at half its size. The picture's mipmap
+// chain is made once and kept across the frames, and each frame shows the picture and the spinner.
+// Before the step every frame made the chain again.
+func TestAndroidKeepsTheMipmapsOfAPicture(t *testing.T) {
+	e := Shared(t, "glutter-37")
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	files := runIssue(ctx, t, e, issues.SoftMipmapsName, "soft", nil, androidtool.BuildOptions{})
+	if device := strings.TrimSpace(string(files["device.txt"])); device != "soft" {
+		t.Errorf("the run did not use the software renderer: %q", device)
+	}
+	if dir := os.Getenv("GLUTTER_TEST_DUMP"); dir != "" {
+		if err := os.WriteFile(filepath.Join(dir, "android-soft-mipmaps.png"), files["frame.png"], 0o644); err != nil {
+			t.Errorf("dump: %v", err)
+		}
+	}
+	rep, err := issues.ParseSoftMipmaps(strings.Split(string(files["report.txt"]), "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range rep.Lines() {
+		t.Log(line)
+	}
+	for _, problem := range rep.Problems() {
+		t.Error(problem)
+	}
+}

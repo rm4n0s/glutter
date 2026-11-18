@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -235,17 +236,16 @@ func (r *renderer) imageShaderFunc(s *ui.ImageShader, inv affine) func(ui.Offset
 	if quality == ui.FilterQualityUnspecified {
 		quality = ui.FilterQualityLow
 	}
-	chain := r.levels(img)
+	w0, h0 := img.Width(), img.Height()
 	level := 0
 	if quality == ui.FilterQualityMedium || quality == ui.FilterQualityHigh {
 		// How many image pixels one surface pixel spans: the inverse transform's scale.
 		if scale := math.Sqrt(math.Abs(inv.det())); scale > 1 {
-			level = min(int(math.Log2(scale)+0.5), len(chain)-1)
+			level = min(int(math.Log2(scale)+0.5), gpu.MipLevels(w0, h0)-1)
 		}
 	}
-	l := chain[level]
+	l := r.level(img, level)
 	t := tiling{x: s.TileModeX(), y: s.TileModeY()}
-	w0, h0 := img.Width(), img.Height()
 	return func(p ui.Offset) rgba {
 		pt := inv.apply(p.Dx, p.Dy)
 		return l.sample(pt.Dx, pt.Dy, w0, h0, quality, t)

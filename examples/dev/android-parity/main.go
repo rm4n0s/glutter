@@ -10,14 +10,16 @@
 //
 //	go run ./cmd/glutter-android run -env GLUTTER_RENDERER=gles ./examples/dev/android-parity
 //
-// Environment: GLUTTER_RENDERER is gles (the default) or vulkan. The images are in
+// Environment: GLUTTER_RENDERER is gles (the default), vulkan or soft (the software renderer of
+// Android, into the window's buffers). The images are in
 // files/parity/<renderer>/<scene>.png, with <scene>.txt that says how many commands the renderer
 // skipped, and files/parity/<renderer>/DONE when the whole run finished. The same program draws every
 // scene with the software renderer too, into files/parity/soft: the host's fonts are not the
 // device's, so the device's own software images are what the GPU images are compared with.
 //
 // With GLUTTER_ISSUE=<name> it runs the reproduction of a reported issue instead (internal/issues;
-// atlas-full is the frame of many shadows of step 46.1), with the same renderer, and writes
+// atlas-full is the frame of many shadows of step 46.1; soft-mipmaps, a spinner over a picture of
+// step 49.1, is the software renderer's), with the same renderer, and writes
 // files/issues/<name>/<renderer>/report.txt (the lines of the issue's report), frame.png (the first
 // frame) and DONE.
 package main
@@ -37,6 +39,7 @@ import (
 	"github.com/rm4n0s/glutter/internal/gpu"
 	"github.com/rm4n0s/glutter/internal/gpu/explicit"
 	"github.com/rm4n0s/glutter/internal/gpu/gles"
+	"github.com/rm4n0s/glutter/internal/gpu/nativewindow"
 	"github.com/rm4n0s/glutter/internal/gpu/soft"
 	"github.com/rm4n0s/glutter/internal/gpu/vulkan"
 	"github.com/rm4n0s/glutter/internal/issues"
@@ -122,7 +125,9 @@ func (h *parity) drawAll() error {
 		}
 	}
 	var (
-		draw    sceneDrawer
+		draw sceneDrawer
+		// mipDraw draws a frame of the reproduction of soft-mipmaps: only the software renderer has it.
+		mipDraw issues.SoftMipmapsDraw
 		closeFn func()
 		device  string
 		vkDev   *vulkan.Device
@@ -169,15 +174,38 @@ func (h *parity) drawAll() error {
 			return img, issues.AtlasFullStats{TilesRasterized: st.TilesRasterized, AtlasFull: st.AtlasFull, Skipped: st.Skipped, Unsupported: st.Unsupported}, err
 		}
 		device = "vulkan"
+	case "soft":
+		presenter, err := nativewindow.NewPresenter()
+		if err != nil {
+			return err
+		}
+		r := nativewindow.NewRenderer(presenter, nativewindow.Options{Background: ui.NewColor(0xFFFFFFFF)})
+		surface, err := r.Attach(h.win.NativeSurface())
+		if err != nil {
+			_ = r.Close()
+			return err
+		}
+		closeFn = func() { surface.Destroy(); _ = r.Close() }
+		device = "soft"
+		// Every frame is drawn through the window, as the engine draws it.
+		draw = func(scene *ui.Scene, width, height int) (*image.RGBA, issues.AtlasFullStats, error) {
+			img, err := r.RenderCapture(surface, scene, ui.Size{Width: float64(width), Height: float64(height)}, 1)
+			return img, issues.AtlasFullStats{}, err
+		}
+		mipDraw = func(scene *ui.Scene, width, height int) (*image.RGBA, issues.SoftMipmapsStats, error) {
+			img, err := r.RenderCapture(surface, scene, ui.Size{Width: float64(width), Height: float64(height)}, 1)
+			st := r.MipmapStats()
+			return img, issues.SoftMipmapsStats{Chains: st.Chains, Built: st.Built}, err
+		}
 	default:
-		return errors.New(tagParityRendererUnknown, "GLUTTER_RENDERER is gles or vulkan", "value", h.renderer)
+		return errors.New(tagParityRendererUnknown, "GLUTTER_RENDERER is gles, vulkan or soft", "value", h.renderer)
 	}
 	defer closeFn()
 	slog.Info("android-parity: renderer ready", "renderer", h.renderer, "device", device)
 	done := proof.Names()
 	if issue != "" {
 		done = []string{issue}
-		if err := drawIssue(issue, dir, draw); err != nil {
+		if err := drawIssue(issue, dir, draw, mipDraw); err != nil {
 			return err
 		}
 		if vkDev != nil {
@@ -235,21 +263,44 @@ func (h *parity) drawAll() error {
 	return nil
 }
 
-// drawIssue runs the reproduction of the issue with the renderer and writes its report and its
-// first frame into the directory. An error of a frame, which is the issue itself on a renderer
-// without its fix, ends the run with no report.
-func drawIssue(issue, dir string, draw sceneDrawer) error {
-	if issue != issues.AtlasFullName {
-		return errors.New(tagParityIssueUnknown, "GLUTTER_ISSUE is not an issue that the program reproduces", "value", issue, "known", issues.AtlasFullName)
+// drawIssue runs the reproduction of the issue with the renderer (mipDraw is the software
+// renderer's, nil for another) and writes its report and its first frame into the directory. An
+// error of a frame, which is the issue itself on a renderer without its fix, ends the run with no
+// report.
+func drawIssue(issue, dir string, draw sceneDrawer, mipDraw issues.SoftMipmapsDraw) error {
+	var (
+		lines []string
+		first *image.RGBA
+	)
+	switch issue {
+	case issues.AtlasFullName:
+		rep, img, err := issues.RunAtlasFull(issues.AtlasFullDraw(draw))
+		if err != nil {
+			return err
+		}
+		lines, first = rep.Lines(), img
+	case issues.SoftMipmapsName:
+		if mipDraw == nil {
+			return errors.New(tagParityIssueRenderer, "the issue is the software renderer's: run it with GLUTTER_RENDERER=soft", "issue", issue)
+		}
+		rep, err := issues.RunSoftMipmaps(func(scene *ui.Scene, width, height int) (*image.RGBA, issues.SoftMipmapsStats, error) {
+			img, st, err := mipDraw(scene, width, height)
+			if first == nil {
+				first = img
+			}
+			return img, st, err
+		})
+		if err != nil {
+			return err
+		}
+		lines = rep.Lines()
+	default:
+		return errors.New(tagParityIssueUnknown, "GLUTTER_ISSUE is not an issue that the program reproduces", "value", issue, "known", issues.AtlasFullName+" "+issues.SoftMipmapsName)
 	}
-	rep, first, err := issues.RunAtlasFull(issues.AtlasFullDraw(draw))
-	if err != nil {
-		return err
-	}
-	for _, line := range rep.Lines() {
+	for _, line := range lines {
 		slog.Info("android-parity: " + line)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "report.txt"), []byte(strings.Join(rep.Lines(), "\n")+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "report.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		return errors.NewErr(tagParityWriteFailed, err).SetMetadata("issue", issue)
 	}
 	return goldens.WritePNG(filepath.Join(dir, "frame.png"), first)
@@ -259,5 +310,6 @@ func drawIssue(issue, dir string, draw sceneDrawer) error {
 const (
 	tagParityRendererUnknown = "ParityRendererUnknown"
 	tagParityIssueUnknown    = "ParityIssueUnknown"
+	tagParityIssueRenderer   = "ParityIssueRenderer"
 	tagParityWriteFailed     = "ParityWriteFailed"
 )

@@ -37,7 +37,7 @@ func Render(scene *ui.Scene, width, height int) (*image.RGBA, error) {
 		return nil, errors.New(tagSoftSizeInvalid, "The surface size is not valid.", "width", width, "height", height)
 	}
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	if err := renderInto(img, scene, img.Rect); err != nil {
+	if err := renderInto(img, scene, img.Rect, NewCache()); err != nil {
 		return nil, err
 	}
 	return img, nil
@@ -52,7 +52,8 @@ func Render(scene *ui.Scene, width, height int) (*image.RGBA, error) {
 // draws (an image filter or a backdrop filter that reaches beyond the region) can differ:
 // a caller that redraws a part of a surface draws the whole of such a scene's reach.
 //
-// It keeps nothing between calls, and two calls on different images may run at the same
+// It keeps nothing between calls (a renderer that draws frame after frame uses a Cache, which
+// keeps the mipmap chains of the images), and two calls on different images may run at the same
 // time.
 //
 // Flutter: no counterpart (flutter_test renders with Skia's software backend)
@@ -63,21 +64,23 @@ func RenderInto(dst *image.RGBA, scene *ui.Scene, region image.Rectangle) error 
 	if dst == nil || dst.Rect.Empty() {
 		return errors.New(tagSoftTargetInvalid, "RenderInto needs an image that is not empty.")
 	}
-	return renderInto(dst, scene, region.Intersect(dst.Rect))
+	return renderInto(dst, scene, region.Intersect(dst.Rect), NewCache())
 }
 
-// renderInto draws the scene over the pixels of img inside the region, which img contains.
-func renderInto(img *image.RGBA, scene *ui.Scene, region image.Rectangle) error {
+// renderInto draws the scene over the pixels of img inside the region, which img contains, with the
+// mipmap chains of the cache.
+func renderInto(img *image.RGBA, scene *ui.Scene, region image.Rectangle, cache *Cache) error {
 	if region.Empty() {
 		return nil
 	}
-	r := &renderer{img: img, mips: map[*ui.Image][]*mipLevel{}, scratch: &scratch{}}
+	r := &renderer{img: img, cache: cache, scratch: &scratch{}}
 	return r.layer(scene.Root(), &state{m: ui.NewMatrix4Identity(), clip: newClip(region)})
 }
 
 type renderer struct {
-	img  *image.RGBA
-	mips map[*ui.Image][]*mipLevel
+	img *image.RGBA
+	// cache has the mipmap chains of the images.
+	cache *Cache
 	// scratch is the memory shapes are rasterized in, for one shape after another.
 	scratch *scratch
 }

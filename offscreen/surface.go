@@ -15,7 +15,9 @@ const maxSurfaceSize = 1 << 15
 
 // Surface holds the pixels of one view across frames: Draw redraws only what changed
 // since the last frame over the pixels of the frame before, and tells which rectangles it
-// redrew. The pixels are those of a drawing of the whole scene. A Surface is used by one
+// redrew. The pixels are those of a drawing of the whole scene. It keeps the mipmap chains of
+// the images it scales down from one frame to the next, as a window's renderer keeps the
+// textures of images, for as long as they are drawn. A Surface is used by one
 // goroutine at a time; draw detached scenes (Detacher) when that is not the UI thread.
 //
 // Flutter: no counterpart
@@ -24,6 +26,8 @@ type Surface struct {
 	tracker *gpu.DamageTracker
 	// last is the scene the pixels show, nil when they show none.
 	last *ui.Scene
+	// cache keeps the mipmap chains of the images across frames.
+	cache *soft.Cache
 }
 
 // NewSurface returns a surface of width x height pixels, transparent until the first
@@ -35,7 +39,7 @@ func NewSurface(width, height int) *Surface {
 	if !validSize(width, height) {
 		panic(errors.New(tagSurfaceSizeInvalid, "The surface size is not valid.", "width", width, "height", height))
 	}
-	return &Surface{img: image.NewRGBA(image.Rect(0, 0, width, height)), tracker: gpu.NewDamageTracker()}
+	return &Surface{img: image.NewRGBA(image.Rect(0, 0, width, height)), tracker: gpu.NewDamageTracker(), cache: soft.NewCache()}
 }
 
 func validSize(width, height int) bool {
@@ -104,9 +108,10 @@ func (s *Surface) Draw(scene *ui.Scene) ([]image.Rectangle, error) {
 	if damage.Full {
 		rects = []image.Rectangle{b}
 	}
+	defer s.cache.EndFrame()
 	for _, r := range rects {
 		clearRect(s.img, r)
-		if err := soft.RenderInto(s.img, scene, r); err != nil {
+		if err := s.cache.RenderInto(s.img, scene, r); err != nil {
 			s.tracker.Invalidate()
 			s.last = nil
 			return nil, err
