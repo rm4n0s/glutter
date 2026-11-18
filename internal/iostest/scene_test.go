@@ -214,7 +214,7 @@ func TestCounterDrawsItsFirstFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // only read
 	img, err := png.Decode(f)
 	if err != nil {
 		t.Fatalf("the saved frame: %v", err)

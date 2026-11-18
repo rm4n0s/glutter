@@ -424,9 +424,6 @@ func (p *Platform) teardown() {
 	objcx.DropHandle(p.handle)
 }
 
-// newTestPlatformOnly is for the tests: the number of windows.
-func (p *Platform) windowCount() int { return len(p.windows) }
-
 // requestQuit is Cmd+Q, the Dock's Quit and a logout (SPEC §29.8): the windows are asked to close in the
 // order they were made, as the user's close button asks, and each one that agrees is closed at once, as a
 // document app closes its documents when it quits. A window that refuses (the framework's exit request is

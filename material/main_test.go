@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/testhost"
 )
 
 // TestMain runs the tests of the package as Linux on an Apple host. Many tests make their ThemeData
@@ -21,8 +22,13 @@ var platformChosen bool
 func TestMain(m *testing.M) {
 	switch foundation.DefaultTargetPlatform() {
 	case foundation.TargetPlatformMacOS, foundation.TargetPlatformIOS:
-		if foundation.DebugMode && foundation.DebugDefaultTargetPlatformOverride().IsNone() {
+		switch {
+		case foundation.DebugMode && foundation.DebugDefaultTargetPlatformOverride().IsNone():
 			foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformLinux))
+			applePinned = true
+		case !foundation.DebugMode:
+			// A release build has no override: the host's platform is gluttertest's pin (internal/testhost).
+			testhost.SetPlatform(int32(foundation.TargetPlatformLinux))
 			applePinned = true
 		}
 	}

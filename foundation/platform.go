@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/testhost"
 )
 
 // TargetPlatform is the operating system the framework behaves like. Platform
@@ -71,6 +72,8 @@ var debugPlatformOverride atomic.Int32
 
 // DefaultTargetPlatform is the platform the framework behaves like. Debug
 // builds let a test change it with SetDebugDefaultTargetPlatformOverride.
+// In every build mode, gluttertest makes a test that chose no platform run as
+// Linux on an Apple host (internal/testhost; SPEC §12.10).
 //
 // Flutter: foundation/platform.dart defaultTargetPlatform
 func DefaultTargetPlatform() TargetPlatform {
@@ -78,6 +81,9 @@ func DefaultTargetPlatform() TargetPlatform {
 		if p := TargetPlatform(debugPlatformOverride.Load()); p != TargetPlatformUnspecified {
 			return p
 		}
+	}
+	if p := TargetPlatform(testhost.Platform()); p != TargetPlatformUnspecified {
+		return p
 	}
 	return hostTargetPlatform()
 }

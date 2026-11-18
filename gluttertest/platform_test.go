@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/testhost"
 )
 
 // pinTB records the cleanups, so that a test can run them when it wants.
@@ -63,4 +64,43 @@ func TestPinPlatformFor(t *testing.T) {
 			t.Errorf("override after the cleanup = %v, want Windows (the test's)", got)
 		}
 	})
+}
+
+// TestPinPlatformForInAReleaseBuild: a release build has no override, so an Apple host is pinned to Linux through
+// internal/testhost, which foundation.DefaultTargetPlatform reads in every mode; the cleanup gives the host its
+// platform back. Before, a release build left the host's platform, and a test on a Mac drew macOS's branches
+// (the centered title of examples/counter's Android golden, the fling of examples/scrolling).
+func TestPinPlatformForInAReleaseBuild(t *testing.T) {
+	if foundation.DebugMode {
+		t.Skip("a debug build pins with the override (TestPinPlatformFor)")
+	}
+	tests := []struct {
+		name   string
+		host   foundation.TargetPlatform
+		pinned bool
+	}{
+		{"macOS is pinned to Linux", foundation.TargetPlatformMacOS, true},
+		{"iOS is pinned to Linux", foundation.TargetPlatformIOS, true},
+		{"Linux is left alone", foundation.TargetPlatformLinux, false},
+		{"Windows is left alone", foundation.TargetPlatformWindows, false},
+		{"Android is left alone", foundation.TargetPlatformAndroid, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := testhost.Platform()
+			ftb := &pinTB{}
+			pinPlatformFor(ftb, tt.host)
+			got := testhost.Platform()
+			switch {
+			case tt.pinned && (got != int32(foundation.TargetPlatformLinux) || foundation.DefaultTargetPlatform() != foundation.TargetPlatformLinux):
+				t.Errorf("pinned host = %v, DefaultTargetPlatform = %v, want Linux", foundation.TargetPlatform(got), foundation.DefaultTargetPlatform())
+			case !tt.pinned && got != before:
+				t.Errorf("pinned host = %v, want it left as it was (%v)", foundation.TargetPlatform(got), foundation.TargetPlatform(before))
+			}
+			ftb.runCleanups()
+			if tt.pinned && testhost.Platform() != 0 {
+				t.Errorf("pinned host after the test = %v, want none", foundation.TargetPlatform(testhost.Platform()))
+			}
+		})
+	}
 }

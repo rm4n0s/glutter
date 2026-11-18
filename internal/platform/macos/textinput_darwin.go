@@ -235,7 +235,7 @@ func (k *keyboard) textKey(w *window, ev objc.ID, kind int) bool {
 	handled := send[bool](ctx, "handleEvent:", ev)
 	// Both flags are set for the arrow keys.
 	navigation := flags&flagFunction != 0 && flags&flagNumericPad != 0
-	if ev == k.equivalent && !(navigation && w.text.hasMarked()) && !k.produced {
+	if ev == k.equivalent && (!navigation || !w.text.hasMarked()) && !k.produced {
 		return false
 	}
 	return handled

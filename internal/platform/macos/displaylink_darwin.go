@@ -205,13 +205,12 @@ func (c *caLink) close() {
 
 // cvFuncs are the CVDisplayLink functions.
 type cvFuncs struct {
-	create       func(out *uintptr) int32
-	setCallback  func(link uintptr, cb uintptr, userInfo uintptr) int32
-	start        func(link uintptr) int32
-	stop         func(link uintptr) int32
-	release      func(link uintptr)
-	setDisplay   func(link uintptr, display uint32) int32
-	callbackOnce uintptr
+	create      func(out *uintptr) int32
+	setCallback func(link uintptr, cb uintptr, userInfo uintptr) int32
+	start       func(link uintptr) int32
+	stop        func(link uintptr) int32
+	release     func(link uintptr)
+	setDisplay  func(link uintptr, display uint32) int32
 }
 
 func (f *cvFuncs) bind() error {

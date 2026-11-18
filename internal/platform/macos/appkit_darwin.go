@@ -39,9 +39,6 @@ const (
 
 	viewLayerContentsRedrawNever int64 = 0
 
-	// windowLevelModal is NSModalPanelWindowLevel.
-	windowLevelNormal int64 = 0
-
 	terminateCancel uint64 = 0
 	terminateNow    uint64 = 1
 )

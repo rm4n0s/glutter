@@ -1219,9 +1219,11 @@ Step 46.1 (Glutter 1.17.4) lets the coverage atlas of the GPU renderers grow for
 
 2. An app with many shadows (Fishball with its shadows on), on any platform: the screen that stopped the app draws, and the log has no line "the coverage atlas is full".
 
-**On a Mac** these are step 47.1, the Mac agent's: it runs the Metal test, which was written on Linux and has **never run**, and writes and runs the Simulator test. To try the Metal test by hand: `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' -run DrawsAFrameThatFillsTheAtlas -v ./internal/gpu/metal` (with `GLUTTER_TEST_DUMP=/some/dir` in front it writes the frame as `metal-many-shadows.png`: ten soft shadows of panels on white, one inside the other).
+**On a Mac** these were step 47.1, the Mac agent's: it ran the Metal test, which was written on Linux, and wrote and ran the Simulator test (`internal/iostest/issueapp`). To try the Metal test by hand: `MTL_DEBUG_LAYER=1 go test -tags 'glutter_display debug_mode' -run DrawsAFrameThatFillsTheAtlas -v ./internal/gpu/metal` (with `GLUTTER_TEST_DUMP=/some/dir` in front it writes the frame as `metal-many-shadows.png`: ten soft shadows of panels on white, one inside the other); the Simulator's: `go test -p 1 -tags 'glutter_ios debug_mode' -run DrawsAFrameThatFillsTheAtlas -v ./internal/iostest`.
 
-Answers: _(not yet recorded)_
+Answers:
+- **On a Mac** (step 47.1, 2026-11-18, the Mac agent on the owner's Mac18,5 with macOS 27.2 and Xcode's iOS 27.2 Simulator): `metal.TestMetalDrawsAFrameThatFillsTheAtlas` passed on its first run, with the Metal validation layer (`MTL_DEBUG_LAYER=1`) and the race detector, and `iostest.TestIOSDrawsAFrameThatFillsTheAtlas` passed in the Simulator. Both logged the four lines of the other platforms: tiles 636, 0, 0 and 178, full 0, skipped 0, and the `pixels` of the first, second and fourth frames the same hash (`42cd335f…67e6ce`, shadow 465; the third `8b19d48b…50da8b`, shadow 189), the same on macOS's Metal and on the Simulator's. The whole Metal display suite passed too.
+- Windows PC, an app: _(not yet recorded)_
 
 ## 48.1 Quitting with IBus
 

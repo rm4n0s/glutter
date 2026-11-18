@@ -304,13 +304,6 @@ func (d *Device) recycle(chunks []*stageChunk) {
 	}
 }
 
-// label names a Metal object for the debugger and the validation messages.
-func label(obj objc.ID, kind string) {
-	if obj != 0 {
-		call(obj, "setLabel:", objcx.NewString(kind))
-	}
-}
-
 // ptr is the address that a message takes for an out-parameter.
 func ptr[T any](p *T) unsafe.Pointer { return unsafe.Pointer(p) }
 

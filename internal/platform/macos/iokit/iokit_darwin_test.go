@@ -372,7 +372,7 @@ func TestManagerKeepsPanicsOfItsCallbacksOut(t *testing.T) {
 	dev := cf.NewNumber(99)
 	t.Cleanup(func() { cf.Release(dev) })
 	m := newManager(f.hidFuncs, func(func()) {}, ManagerOptions{Guard: func(fn func()) {
-		defer func() { recover() }()
+		defer func() { _ = recover() }()
 		fn()
 	}})
 	if err := m.Start(Callbacks{Added: func(Device) { panic("the handler broke") }}); err != nil {

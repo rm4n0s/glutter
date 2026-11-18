@@ -3,6 +3,7 @@
 package macos
 
 import (
+	"context"
 	"math"
 	"slices"
 	"sync"
@@ -63,7 +64,7 @@ func axFixture(s *session, h *recorder) (w *window, host *fakeAXHost) {
 	host = &fakeAXHost{}
 	s.onUI(func() {
 		acc := s.p.Services().Accessibility()
-		acc.Start(nil, host)
+		acc.Start(context.Background(), host)
 		acc.SetWindow(w.id, "The window", true)
 	})
 	return w, host

@@ -5,6 +5,7 @@ package dbus_test
 import (
 	"context"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -21,7 +22,14 @@ import (
 // bus that accepts the connection and never answers ends in DBusConnectFailed when ctx
 // ends.
 func TestConnectAddressStopsWaitingWhenItsContextEnds(t *testing.T) {
-	socket := filepath.Join(t.TempDir(), "silent")
+	// Not under t.TempDir(): the path of a Unix socket is at most 104 bytes on macOS, and the test's
+	// name makes the temporary directory longer than that there.
+	dir, err := os.MkdirTemp("", "dbus")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) }) // the test is over
+	socket := filepath.Join(dir, "silent")
 	l, err := net.Listen("unix", socket)
 	if err != nil {
 		t.Fatal(err)

@@ -784,3 +784,6 @@ func TestFramesComeWhetherOrNotTheViewsDisplayLinkTicks(t *testing.T) {
 		s.onUI(w.Close)
 	})
 }
+
+// windowCount is the number of the platform's windows, for the display tests; it runs on the UI thread.
+func (p *Platform) windowCount() int { return len(p.windows) }

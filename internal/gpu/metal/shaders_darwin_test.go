@@ -23,10 +23,9 @@ type unit struct {
 }
 
 type unitEntry struct {
-	name   string
-	stage  string // vertex, fragment or kernel
-	binds  []unitBind
-	inputs int
+	name  string
+	stage string // vertex, fragment or kernel
+	binds []unitBind
 }
 
 type unitBind struct {

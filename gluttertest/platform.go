@@ -1,6 +1,9 @@
 package gluttertest
 
-import "github.com/rm4n0s/glutter/foundation"
+import (
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/testhost"
+)
 
 // pinApplePlatform makes a test run as Linux when the host is an Apple platform and the test has chosen
 // none: the framework's branches by platform (typography, scroll physics, shortcuts, the text selection
@@ -9,7 +12,9 @@ import "github.com/rm4n0s/glutter/foundation"
 // gives the same result as on Linux (SPEC §12.10); a test of an Apple branch sets the platform itself
 // (foundation.SetDebugDefaultTargetPlatformOverride), before or after New, and keeps it.
 //
-// The pin is removed when the test ends, unless the test changed the override in the meantime.
+// The pin is removed when the test ends, unless the test changed the override in the meantime. A release
+// build has no override (SetDebugDefaultTargetPlatformOverride panics there, and a test of an Apple branch
+// skips): the pin is then internal/testhost's, which foundation.DefaultTargetPlatform reads in every mode.
 func pinApplePlatform(tb TB) {
 	tb.Helper()
 	pinPlatformFor(tb, foundation.DefaultTargetPlatform())
@@ -18,12 +23,17 @@ func pinApplePlatform(tb TB) {
 // pinPlatformFor is pinApplePlatform for a host platform that the caller names (a test of it names each).
 func pinPlatformFor(tb TB, host foundation.TargetPlatform) {
 	tb.Helper()
-	if !foundation.DebugMode || foundation.DebugDefaultTargetPlatformOverride().IsSome() {
+	if foundation.DebugMode && foundation.DebugDefaultTargetPlatformOverride().IsSome() {
 		return
 	}
 	switch host {
 	case foundation.TargetPlatformMacOS, foundation.TargetPlatformIOS:
 	default:
+		return
+	}
+	if !foundation.DebugMode {
+		testhost.SetPlatform(int32(foundation.TargetPlatformLinux))
+		tb.Cleanup(func() { testhost.SetPlatform(0) })
 		return
 	}
 	foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(foundation.TargetPlatformLinux))
