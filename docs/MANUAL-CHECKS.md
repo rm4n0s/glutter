@@ -1258,3 +1258,12 @@ Answers:
 - **On a Mac** (step 50.1, 2026-11-18, the Mac agent on the owner's Mac with macOS 27.2 and Xcode's iOS 27.2 Simulator): `engine.TestDisplayKeepsTheMipmapsOfAPicture` (macOS, `shmwindow` into the window's IOSurfaces at the screen's scale) and `iostest.TestIOSKeepsTheMipmapsOfAPicture` (the Simulator, `internal/iostest/issueapp`) passed on their first runs, with the eight lines of the other platforms: `built 1` in the first frame and in "another picture", `built 0` in every other, `chains 2` at the end, and the same hashes on both (the picture `aaf9d264…145c8c`, then `9056e577…a56d31`; the spinner of the first frame `f3e73d27…9a051d64`). The macOS display tests of the software renderer (`-run Soft`) passed.
 - Fishball: _(not yet recorded)_
 - Windows PC: _(not yet recorded)_
+
+## 51.2 A logout with a Glutter app open on a Mac
+
+Step 51.2 (Glutter 1.17.8) handles the quit Apple event on macOS itself: it gives the app the reason (`ui.AppExitReason`: the close button, the app's Quit, the end of the session) and replies "User cancelled" only when the app refuses. Before, a logout with a Glutter app open was cancelled even when the app quit. On the Mac, `TestQuitEventSaysWhyAndIsCancelledOnlyByARefusal` (`internal/platform/macos`, `-tags glutter_display`) sends the real event to the test process with the reasons `rlgo` and `logo`, and `osascript -e 'tell application id "…" to «event aevtquit» given «class why?»:«constant ****logo»'` against a built app answered -128 before the fix and nothing after it. A real logout cannot be scripted without ending the owner's session. On a Mac:
+
+1. Build an app with Glutter 1.17.8 (mardp, or `examples/counter` with `go run ./cmd/glutter-macos build -o Counter.app ./examples/counter`), open it, and log out (Apple menu, Log Out). The app quits and the logout goes on; macOS does not say that the app stopped the logout. When it does, send the app's log.
+2. An app whose `OnExitRequested` cancels a `SessionEnd` (mardp with unsaved work, if it asks): the logout stops and macOS names the app. When it does not, send the app's log.
+
+Answers: _(not yet recorded)_

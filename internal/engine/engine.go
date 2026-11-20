@@ -1547,11 +1547,17 @@ func (h *handler) waitIdle(deadline time.Time) {
 // it destroys the surface of the renderer, which draws into the window, and then
 // lets the window close.
 func (h *handler) OnCloseRequest(view ui.ViewID) bool {
+	return h.OnCloseRequestFor(view, ui.AppExitReasonWindowClose)
+}
+
+// OnCloseRequestFor is OnCloseRequest with the reason of the request, which the
+// app reads while it answers (ui.PlatformDispatcher.ExitRequestReason).
+func (h *handler) OnCloseRequestFor(view ui.ViewID, reason ui.AppExitReason) bool {
 	w, ok := h.windows[view]
 	if !ok {
 		return true
 	}
-	if !h.disp.RequestClose(view) {
+	if !h.disp.RequestCloseFor(view, reason) {
 		return false
 	}
 	h.forget(w)

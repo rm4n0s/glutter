@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -391,6 +392,32 @@ func TestRequestClose(t *testing.T) {
 	}
 }
 
+func TestRequestCloseForGivesTheReasonWhileTheHooksRun(t *testing.T) {
+	d := NewPlatformDispatcher(nil)
+	var inClose, inExit []AppExitReason
+	d.OnWindowCloseRequested = func(ViewID) bool { inClose = append(inClose, d.ExitRequestReason()); return false }
+	d.OnExitRequested = func(ViewID) AppExitResponse {
+		inExit = append(inExit, d.ExitRequestReason())
+		return AppExitResponseExit
+	}
+	if got := d.ExitRequestReason(); got != AppExitReasonUnspecified {
+		t.Errorf("before a request: %v, want AppExitReasonUnspecified", got)
+	}
+	d.RequestCloseFor(1, AppExitReasonSessionEnd)
+	d.RequestCloseFor(1, AppExitReasonQuit)
+	d.RequestClose(1)
+	want := []AppExitReason{AppExitReasonSessionEnd, AppExitReasonQuit, AppExitReasonWindowClose}
+	if fmt.Sprint(inExit) != fmt.Sprint(want) {
+		t.Errorf("OnExitRequested saw %v, want %v", inExit, want)
+	}
+	if fmt.Sprint(inClose) != fmt.Sprint(want) {
+		t.Errorf("OnWindowCloseRequested saw %v, want %v", inClose, want)
+	}
+	if got := d.ExitRequestReason(); got != AppExitReasonUnspecified {
+		t.Errorf("after the requests: %v, want AppExitReasonUnspecified", got)
+	}
+}
+
 func TestAppExitEnumNames(t *testing.T) {
 	tests := []struct{ got, want string }{
 		{AppExitTypeCancelable.String(), "AppExitTypeCancelable"},
@@ -401,6 +428,11 @@ func TestAppExitEnumNames(t *testing.T) {
 		{AppExitResponseCancel.String(), "AppExitResponseCancel"},
 		{AppExitResponseUnspecified.String(), "AppExitResponseUnspecified"},
 		{AppExitResponse(9).String(), "AppExitResponse(9)"},
+		{AppExitReasonUnspecified.String(), "AppExitReasonUnspecified"},
+		{AppExitReasonWindowClose.String(), "AppExitReasonWindowClose"},
+		{AppExitReasonQuit.String(), "AppExitReasonQuit"},
+		{AppExitReasonSessionEnd.String(), "AppExitReasonSessionEnd"},
+		{AppExitReason(9).String(), "AppExitReason(9)"},
 	}
 	for _, tc := range tests {
 		if tc.got != tc.want {

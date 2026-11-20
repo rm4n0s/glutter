@@ -515,6 +515,42 @@ func TestClosingTheWindowRemovesTheView(t *testing.T) {
 	finish(t, h, done)
 }
 
+func TestTheReasonOfACloseRequestReachesTheApp(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	done := h.run(t)
+	waitFor(t, func() bool {
+		ready := false
+		onUI(t, h, func() { ready = r.dispatcher() != nil })
+		return ready
+	})
+	var got []ui.AppExitReason
+	onUI(t, h, func() {
+		d := r.dispatcher()
+		d.OnExitRequested = func(ui.ViewID) ui.AppExitResponse {
+			got = append(got, d.ExitRequestReason())
+			return ui.AppExitResponseCancel
+		}
+	})
+	h.c.Inject(fake.CloseRequestEvent{View: 0, Reason: ui.AppExitReasonSessionEnd})
+	h.c.Inject(fake.CloseRequestEvent{View: 0})
+	var kept bool
+	waitFor(t, func() bool {
+		n := 0
+		onUI(t, h, func() { n = len(got); kept = r.dispatcher().ImplicitView() != nil })
+		return n == 2
+	})
+	onUI(t, h, func() {
+		want := []ui.AppExitReason{ui.AppExitReasonSessionEnd, ui.AppExitReasonWindowClose}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("the app saw %v, want %v", got, want)
+		}
+	})
+	if !kept {
+		t.Error("a cancelled request closed the window")
+	}
+	finish(t, h, done)
+}
+
 func TestPlatformConfigurationConversion(t *testing.T) {
 	tests := []struct {
 		name string

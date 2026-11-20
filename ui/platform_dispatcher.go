@@ -328,6 +328,8 @@ type PlatformDispatcher struct {
 	lastFrameTime   time.Duration
 	textEngine      ParagraphFactory
 	semanticsOn     bool
+	// exitReason is the reason of the request to close that is being asked (RequestCloseFor).
+	exitReason AppExitReason
 }
 
 // NewPlatformDispatcher creates a dispatcher with no views. The host is the
@@ -674,11 +676,31 @@ func (d *PlatformDispatcher) RequestAppExit() {
 	}
 }
 
+// ExitRequestReason is why the app is asked to exit, while the request is being
+// asked (OnWindowCloseRequested, OnExitRequested and the observers they call);
+// AppExitReasonUnspecified at any other time (SPEC §8.7 "Closing").
+//
+// Flutter: no counterpart
+func (d *PlatformDispatcher) ExitRequestReason() AppExitReason { return d.exitReason }
+
 // RequestClose is called by the engine when the user asks to close the view. It
-// returns whether the view may close: false when OnExitRequested cancels.
+// returns whether the view may close: false when OnExitRequested cancels. It is
+// RequestCloseFor with AppExitReasonWindowClose.
 //
 // Flutter: services/binding.dart ServicesBinding.handleRequestAppExit
 func (d *PlatformDispatcher) RequestClose(id ViewID) bool {
+	return d.RequestCloseFor(id, AppExitReasonWindowClose)
+}
+
+// RequestCloseFor is RequestClose for a reason that the platform gives: the
+// window's close button, the app's Quit or the end of the session. While
+// OnWindowCloseRequested and OnExitRequested run, ExitRequestReason is reason.
+//
+// Flutter: no counterpart (services/binding.dart ServicesBinding.handleRequestAppExit)
+func (d *PlatformDispatcher) RequestCloseFor(id ViewID, reason AppExitReason) bool {
+	prev := d.exitReason
+	d.exitReason = reason
+	defer func() { d.exitReason = prev }()
 	if d.OnWindowCloseRequested != nil && d.OnWindowCloseRequested(id) {
 		return false
 	}

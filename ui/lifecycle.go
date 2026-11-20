@@ -86,6 +86,47 @@ var appExitTypeNames = [...]string{"AppExitTypeUnspecified", "AppExitTypeCancela
 // Flutter: ui/platform_dispatcher.dart AppExitType
 func (t AppExitType) String() string { return enumName(appExitTypeNames[:], int(t), "AppExitType") }
 
+// AppExitReason is why the app is asked to exit (SPEC §8.7 "Closing"): the close button of a window, the app's own
+// Quit, or the end of the user's session. The app reads it with PlatformDispatcher.ExitRequestReason while it
+// answers the request (AppLifecycleListener.OnExitRequested, WidgetsBindingObserver.DidRequestAppExit), to do what
+// each asks: an app that hides its window on the close button still quits at a logout.
+//
+// Flutter: no counterpart (Flutter's request to exit carries an AppExitType only)
+type AppExitReason int
+
+// The values of AppExitReason.
+const (
+	// AppExitReasonUnspecified is the zero value: no request is being asked, or the platform does not say (an exit
+	// that the app itself asked for with WidgetsBinding.ExitApplication).
+	//
+	// Flutter: no counterpart
+	AppExitReasonUnspecified AppExitReason = iota
+	// AppExitReasonWindowClose is the user closing a window: its close button, Alt+F4, the window menu's Close. Every
+	// platform asks with it.
+	//
+	// Flutter: no counterpart
+	AppExitReasonWindowClose
+	// AppExitReasonQuit is the user quitting the app: Cmd+Q, the app menu's Quit or the Dock's on macOS. Each window is
+	// asked in turn.
+	//
+	// Flutter: no counterpart
+	AppExitReasonQuit
+	// AppExitReasonSessionEnd is the system ending the user's session: a logout, a restart or a shutdown (macOS's quit
+	// Apple event with its reason). An app that refuses stops the logout, as a document with unsaved changes does.
+	//
+	// Flutter: no counterpart
+	AppExitReasonSessionEnd
+)
+
+var appExitReasonNames = [...]string{"AppExitReasonUnspecified", "AppExitReasonWindowClose", "AppExitReasonQuit", "AppExitReasonSessionEnd"}
+
+// String returns the name of the value, such as "AppExitReasonQuit".
+//
+// Flutter: no counterpart
+func (r AppExitReason) String() string {
+	return enumName(appExitReasonNames[:], int(r), "AppExitReason")
+}
+
 // AppExitResponse is the answer of an app to a request to exit.
 //
 // Flutter: ui/platform_dispatcher.dart ui.AppExitResponse

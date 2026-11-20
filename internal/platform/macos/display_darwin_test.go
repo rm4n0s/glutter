@@ -32,6 +32,9 @@ type recorder struct {
 	frameAt  []time.Duration
 	focus    []bool
 	closeReq int
+	// reasons are the reasons of the close requests (the recorder is a platform.CloseReasonHandler, as the
+	// engine's handler is).
+	reasons  []ui.AppExitReason
 	onFrame  func(view ui.ViewID)
 	pointers []ui.PointerData
 	// keys are the key events that OnKeySync heard, which it answers with keyHandled (the recorder is a
@@ -167,8 +170,13 @@ func (r *recorder) OnViewFocus(_ ui.ViewID, focused bool) {
 }
 
 func (r *recorder) OnCloseRequest(view ui.ViewID) bool {
+	return r.OnCloseRequestFor(view, ui.AppExitReasonWindowClose)
+}
+
+func (r *recorder) OnCloseRequestFor(view ui.ViewID, reason ui.AppExitReason) bool {
 	r.mu.Lock()
 	r.closeReq++
+	r.reasons = append(r.reasons, reason)
 	deny := r.denyClose || r.denyViews[view]
 	r.mu.Unlock()
 	return !deny

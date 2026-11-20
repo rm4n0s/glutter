@@ -320,11 +320,18 @@ func (e DisplaysEvent) dispatch(p *Platform, h platform.Handler) {
 type CloseRequestEvent struct {
 	// View is the view the user asked to close.
 	View ui.ViewID
+	// Reason is why (ui.AppExitReason): the event goes to platform.CloseRequest with
+	// it; AppExitReasonUnspecified is the close button, as Handler.OnCloseRequest.
+	Reason ui.AppExitReason
 }
 
 func (e CloseRequestEvent) view() ui.ViewID { return e.View }
 func (e CloseRequestEvent) dispatch(p *Platform, h platform.Handler) {
-	closed := h.OnCloseRequest(e.View)
+	reason := e.Reason
+	if reason == ui.AppExitReasonUnspecified {
+		reason = ui.AppExitReasonWindowClose
+	}
+	closed := platform.CloseRequest(h, e.View, reason)
 	p.record(Entry{Kind: EntryCloseDecision, View: e.View, Value: closed})
 	if !closed {
 		return

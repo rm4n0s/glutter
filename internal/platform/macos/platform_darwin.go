@@ -255,6 +255,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 
 	// The windows made before Run report their size, draw their first frame and show themselves.
 	p.Post(p.showNewWindows)
+	p.installQuitHandler()
 	if ctx.Err() == nil {
 		objcx.WithPool(func() { p.app.Send(sel("run")) })
 	}
@@ -417,6 +418,7 @@ func (p *Platform) teardown() {
 		src.Close()
 	}
 	if p.delegate != 0 {
+		p.removeQuitHandler()
 		p.app.Send(sel("setDelegate:"), objc.ID(0))
 		objcx.Release(p.delegate)
 		p.delegate = 0
@@ -424,19 +426,86 @@ func (p *Platform) teardown() {
 	objcx.DropHandle(p.handle)
 }
 
-// requestQuit is Cmd+Q, the Dock's Quit and a logout (SPEC §29.8): the windows are asked to close in the
-// order they were made, as the user's close button asks, and each one that agrees is closed at once, as a
-// document app closes its documents when it quits. A window that refuses (the framework's exit request is
-// cancelled) stops the quit and stays, with the windows that did not come yet; the app ends when the last
-// window is closed.
-func (p *Platform) requestQuit() {
+// requestQuit is Cmd+Q, the Dock's Quit and a logout (SPEC §29.8), with the reason the app reads while it
+// answers (ui.AppExitReasonQuit or SessionEnd): the windows are asked to close in the order they were made,
+// and each one that agrees is closed at once, as a document app closes its documents when it quits. A
+// window that refuses (the framework's exit request is cancelled) stops the quit and stays, with the
+// windows that did not come yet, and requestQuit reports false; the app ends when the last window is
+// closed.
+func (p *Platform) requestQuit(reason ui.AppExitReason) bool {
 	for _, w := range p.sortedWindows() {
-		if p.handler != nil && !p.handler.OnCloseRequest(w.id) {
-			return
+		if p.handler != nil && !platform.CloseRequest(p.handler, w.id, reason) {
+			return false
 		}
 		w.Close()
 	}
 	if len(p.windows) == 0 {
 		p.stopLoop()
 	}
+	return true
+}
+
+// installQuitHandler makes the quit Apple event (kCoreEventClass, kAEQuitApplication) come to the app
+// delegate's handleQuitEvent:withReplyEvent: instead of AppKit's handler, which calls terminate: and
+// replies "user cancelled" when applicationShouldTerminate: answers NSTerminateCancel, as it must here: the
+// system took that for a refusal and stopped a logout even when the app then quit. Run installs it, and
+// applicationDidFinishLaunching: again after finishLaunching installed AppKit's.
+func (p *Platform) installQuitHandler() {
+	if p.delegate == 0 {
+		return
+	}
+	class("NSAppleEventManager").Send(sel("sharedAppleEventManager")).Send(
+		sel("setEventHandler:andSelector:forEventClass:andEventID:"), p.delegate, sel("handleQuitEvent:withReplyEvent:"),
+		uint32(aeCoreEventClass), uint32(aeQuitApplication))
+}
+
+// removeQuitHandler removes the handler of installQuitHandler, before the delegate it names is released.
+func (p *Platform) removeQuitHandler() {
+	class("NSAppleEventManager").Send(sel("sharedAppleEventManager")).Send(
+		sel("removeEventHandlerForEventClass:andEventID:"), uint32(aeCoreEventClass), uint32(aeQuitApplication))
+}
+
+// handleQuitEvent answers a quit Apple event: the Dock's Quit, a script's, and the system's at a logout,
+// restart or shutdown, whose reason is in the event (keyAEQuitReason). The windows are asked as for Cmd+Q;
+// the reply has userCanceledErr only when the app refused, so the system goes on with a logout that the app
+// agreed to while Run returns and the program ends by itself. Flutter answers NSTerminateLater and replies
+// when the framework has decided, and a reply YES makes AppKit end the process with exit before Run
+// returns (SPEC §29.8, step 51.2).
+//
+// Flutter: shell/platform/darwin/macos/framework/Source/FlutterAppDelegate.mm FlutterAppDelegate applicationShouldTerminate
+func (p *Platform) handleQuitEvent(event, reply objc.ID) {
+	if p.requestQuit(quitReasonOf(quitReasonCode(event))) {
+		return
+	}
+	if reply != 0 && send[uint32](reply, "descriptorType") != aeDescriptorNull {
+		code := class("NSAppleEventDescriptor").Send(sel("descriptorWithInt32:"), int32(aeUserCanceledErr))
+		reply.Send(sel("setParamDescriptor:forKeyword:"), code, uint32(aeErrorNumber))
+	}
+}
+
+// currentQuitReason is the reason of the quit that applicationShouldTerminate: is asked about: the reason
+// of the quit Apple event that AppKit is handling, if it is one (AppKit's handler is still installed, which
+// it is not after installQuitHandler), else the app's Quit (Cmd+Q, the app menu).
+func (p *Platform) currentQuitReason() ui.AppExitReason {
+	ev := class("NSAppleEventManager").Send(sel("sharedAppleEventManager")).Send(sel("currentAppleEvent"))
+	if ev == 0 || send[uint32](ev, "eventClass") != aeCoreEventClass || send[uint32](ev, "eventID") != aeQuitApplication {
+		return ui.AppExitReasonQuit
+	}
+	return quitReasonOf(quitReasonCode(ev))
+}
+
+// quitReasonCode is the keyAEQuitReason of a quit Apple event: an attribute when the system sends it, a
+// parameter when a script does (osascript's «event aevtquit» given «class why?»); 0 when it has none.
+func quitReasonCode(event objc.ID) uint32 {
+	if event == 0 {
+		return 0
+	}
+	d := event.Send(sel("attributeDescriptorForKeyword:"), uint32(aeQuitReason))
+	if d == 0 {
+		d = event.Send(sel("paramDescriptorForKeyword:"), uint32(aeQuitReason))
+	}
+	if d == 0 {
+		return 0
+	}
+	return send[uint32](d, "typeCodeValue") // an enumerated or a type code: both are four characters
 }

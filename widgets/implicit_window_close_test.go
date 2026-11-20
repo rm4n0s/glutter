@@ -187,3 +187,48 @@ func TestDestroyingTheFirstWindowAlone(t *testing.T) {
 		t.Error("the implicit view is still in the dispatcher")
 	}
 }
+
+func TestAnAppThatHidesOnCloseStillQuitsAtTheEndOfTheSession(t *testing.T) {
+	ts, bc := windowApp(t)
+	binding := WidgetsBindingOf(bc)
+	var seen []ui.AppExitReason
+	listener := NewAppLifecycleListener(binding, AppLifecycleListenerOpts{OnExitRequested: func() ui.AppExitResponse {
+		reason := binding.PlatformDispatcher().ExitRequestReason()
+		seen = append(seen, reason)
+		if reason == ui.AppExitReasonWindowClose {
+			return ui.AppExitResponseCancel // hide to the tray instead
+		}
+		return ui.AppExitResponseExit
+	}})
+	defer listener.Dispose()
+
+	tests := []struct {
+		reason ui.AppExitReason
+		want   bool
+	}{
+		{ui.AppExitReasonWindowClose, false},
+		{ui.AppExitReasonQuit, true},
+		{ui.AppExitReasonSessionEnd, true},
+	}
+	for _, tt := range tests {
+		if got := ts.RequestWindowCloseFor(ui.ImplicitViewID, tt.reason); got != tt.want {
+			t.Errorf("%v: the window may close = %v, want %v", tt.reason, got, tt.want)
+		}
+	}
+	if got := ts.RequestWindowClose(ui.ImplicitViewID); got {
+		t.Error("RequestWindowClose is not the close button: the app let the window close")
+	}
+	want := []ui.AppExitReason{ui.AppExitReasonWindowClose, ui.AppExitReasonQuit, ui.AppExitReasonSessionEnd, ui.AppExitReasonWindowClose}
+	if len(seen) != len(want) {
+		t.Fatalf("the listener saw %v, want %v", seen, want)
+	}
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Errorf("the listener saw %v, want %v", seen, want)
+			break
+		}
+	}
+	if got := binding.PlatformDispatcher().ExitRequestReason(); got != ui.AppExitReasonUnspecified {
+		t.Errorf("after the requests the reason is %v, want AppExitReasonUnspecified", got)
+	}
+}

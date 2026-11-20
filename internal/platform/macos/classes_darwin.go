@@ -21,11 +21,19 @@ func (s *system) registerClasses() error {
 					p.guard(p.didFinishLaunching)
 				}
 			}},
+			// Cmd+Q and the app menu's Quit (terminate:). The quit Apple event, which the Dock and the system send,
+			// has a handler of its own (handleQuitEvent:withReplyEvent:); if AppKit's still got one, its reason is
+			// read here.
 			{Name: "applicationShouldTerminate:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) uint64 {
 				if p := platformOf(self); p != nil {
-					p.guard(p.requestQuit)
+					p.guard(func() { p.requestQuit(p.currentQuitReason()) })
 				}
 				return terminateCancel // Run ends by itself when the windows are closed
+			}},
+			{Name: "handleQuitEvent:withReplyEvent:", Fn: func(self objc.ID, _ objc.SEL, event, reply objc.ID) {
+				if p := platformOf(self); p != nil {
+					p.guard(func() { p.handleQuitEvent(event, reply) })
+				}
 			}},
 			{Name: "applicationShouldTerminateAfterLastWindowClosed:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return false }},
 			{Name: "applicationSupportsSecureRestorableState:", Fn: func(objc.ID, objc.SEL, objc.ID) bool { return true }},
@@ -167,6 +175,7 @@ func windowOf(self objc.ID) *window {
 // didFinishLaunching activates a regular app once, so that it is in front when the user runs it from a
 // terminal (SPEC §29.1).
 func (p *Platform) didFinishLaunching() {
+	p.installQuitHandler() // finishLaunching installed AppKit's own
 	if send[int64](p.app, "activationPolicy") == activationPolicyRegular {
 		p.app.Send(sel("activateIgnoringOtherApps:"), true)
 	}

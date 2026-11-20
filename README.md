@@ -142,7 +142,11 @@ func options(mono []byte) m.RunAppOpts {
 An app that lives in the system tray closes its window to the tray: `SetHidden(true)` on the
 window's controller takes it off the screen and the task bar while the app goes on, and
 `SetHidden(false)` or `Activate()` brings it back as it was (Flutter has no counterpart;
-[`examples/tray`](examples/tray) does it from `AppLifecycleListener.OnExitRequested`).
+[`examples/tray`](examples/tray) does it from `AppLifecycleListener.OnExitRequested`). While it answers,
+`WidgetsBindingOf(bc).PlatformDispatcher().ExitRequestReason()` says why the app is asked: the close button
+(`ui.AppExitReasonWindowClose`), the app's Quit (`AppExitReasonQuit`) or a logout, restart or shutdown
+(`AppExitReasonSessionEnd`), so the app can hide on the first and quit on the others. macOS tells all three apart;
+the other platforms give `AppExitReasonWindowClose`.
 
 The controller of a window (`WindowControllerOf(bc)`, or the one a `RegularWindow` is made with) sets its
 title, activates it, minimizes it, maximizes it, makes it full screen, and takes the state a window opens

@@ -181,6 +181,29 @@ type Handler interface {
 	OnCloseRequest(view ui.ViewID) bool
 }
 
+// CloseReasonHandler is implemented by a handler that wants to know why a window is
+// asked to close (ui.AppExitReason, SPEC §8.7 "Closing"). A platform that can tell
+// the close button from the app's Quit and from the end of the session (macOS) calls
+// it instead of Handler.OnCloseRequest; OnCloseRequest is the reason
+// ui.AppExitReasonWindowClose. CloseRequest calls whichever the handler has.
+//
+// Flutter: no counterpart
+type CloseReasonHandler interface {
+	// OnCloseRequestFor is Handler.OnCloseRequest with the reason of the request.
+	OnCloseRequestFor(view ui.ViewID, reason ui.AppExitReason) bool
+}
+
+// CloseRequest asks h whether the window of view may close, for reason: through
+// CloseReasonHandler when h has it, else through Handler.OnCloseRequest.
+//
+// Flutter: no counterpart
+func CloseRequest(h Handler, view ui.ViewID, reason ui.AppExitReason) bool {
+	if rh, ok := h.(CloseReasonHandler); ok {
+		return rh.OnCloseRequestFor(view, reason)
+	}
+	return h.OnCloseRequest(view)
+}
+
 // KeyboardFocusHandler is implemented by a handler that wants to know which window
 // the keys go to. A platform whose keyboard focus is not the focus of its windows
 // (Wayland: wl_keyboard.enter and leave, against the activated state; a seat may have

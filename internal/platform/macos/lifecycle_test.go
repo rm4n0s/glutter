@@ -64,3 +64,25 @@ func TestLifecycleTrackerReportsChangesOnly(t *testing.T) {
 		t.Errorf("ended: %v %v", s, changed)
 	}
 }
+
+func TestQuitReasonOf(t *testing.T) {
+	tests := []struct {
+		name string
+		code uint32
+		want ui.AppExitReason
+	}{
+		{"no reason", 0, ui.AppExitReasonQuit},
+		{"logout question", aeLogOut, ui.AppExitReasonSessionEnd},
+		{"logout", aeReallyLogOut, ui.AppExitReasonSessionEnd},
+		{"restart question", aeShowRestart, ui.AppExitReasonSessionEnd},
+		{"restart", aeRestart, ui.AppExitReasonSessionEnd},
+		{"shutdown question", aeShowShutdown, ui.AppExitReasonSessionEnd},
+		{"shutdown", aeShutDown, ui.AppExitReasonSessionEnd},
+		{"other code", aeQuitApplication, ui.AppExitReasonQuit},
+	}
+	for _, tc := range tests {
+		if got := quitReasonOf(tc.code); got != tc.want {
+			t.Errorf("%s: quitReasonOf(%#x) = %v, want %v", tc.name, tc.code, got, tc.want)
+		}
+	}
+}

@@ -211,6 +211,7 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 		{"settings", SettingsEvent{Settings: platform.Settings{PlatformBrightness: ui.BrightnessDark}}, "OnSettings BrightnessDark"},
 		{"displays", DisplaysEvent{Displays: []platform.Display{{ID: 1}}}, "OnDisplaysChanged"},
 		{"close request", CloseRequestEvent{View: 4}, "OnCloseRequest 4"},
+		{"close request with a reason", CloseRequestEvent{View: 4, Reason: ui.AppExitReasonQuit}, "OnCloseRequest 4"},
 		{"view focus", ViewFocusEvent{View: 5, Focused: true}, "OnViewFocus 5 true"},
 	}
 	for _, tt := range tests {
@@ -448,5 +449,34 @@ func TestPortalHandle(t *testing.T) {
 	}
 	if last := p.Log()[len(p.Log())-1]; last.Kind != EntryPortalHandle {
 		t.Errorf("last entry = %v", last.Kind)
+	}
+}
+
+// reasonRecordingHandler also takes the reason of a close request.
+type reasonRecordingHandler struct{ recordingHandler }
+
+func (h *reasonRecordingHandler) OnCloseRequestFor(view ui.ViewID, reason ui.AppExitReason) bool {
+	h.add("OnCloseRequestFor %d %v", view, reason)
+	return h.allowClose
+}
+
+func TestCloseRequestEventGivesItsReason(t *testing.T) {
+	tests := []struct {
+		reason ui.AppExitReason
+		want   string
+	}{
+		{ui.AppExitReasonUnspecified, "OnCloseRequestFor 4 AppExitReasonWindowClose"},
+		{ui.AppExitReasonWindowClose, "OnCloseRequestFor 4 AppExitReasonWindowClose"},
+		{ui.AppExitReasonQuit, "OnCloseRequestFor 4 AppExitReasonQuit"},
+		{ui.AppExitReasonSessionEnd, "OnCloseRequestFor 4 AppExitReasonSessionEnd"},
+	}
+	for _, tt := range tests {
+		p := New()
+		h := &reasonRecordingHandler{}
+		p.Inject(CloseRequestEvent{View: 4, Reason: tt.reason})
+		runQueued(t, p, h)
+		if want := []string{tt.want}; !reflect.DeepEqual(h.calls, want) {
+			t.Errorf("%v: handler calls = %q, want %q", tt.reason, h.calls, want)
+		}
 	}
 }

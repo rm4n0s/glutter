@@ -178,6 +178,16 @@ func (t *Tester) RequestWindowClose(view ui.ViewID) bool {
 	return t.d.RequestClose(view)
 }
 
+// RequestWindowCloseFor is RequestWindowClose for a reason: the app's Quit or the
+// end of the session ask each window as macOS does, and the app reads the reason
+// with ui.PlatformDispatcher.ExitRequestReason while it answers.
+//
+// Flutter: no counterpart
+func (t *Tester) RequestWindowCloseFor(view ui.ViewID, reason ui.AppExitReason) bool {
+	t.adopt()
+	return t.d.RequestCloseFor(view, reason)
+}
+
 // SetViewFocus tells the framework, as the platform would, that the keyboard focus
 // moved into the view (true), or out of it, from the direction (undefined by
 // default).
