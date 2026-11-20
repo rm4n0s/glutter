@@ -293,7 +293,7 @@ func (e *rawViewElement) updateChild() {
 		// An ErrorBoundary above the view is told first.
 		report = func(err error) { taken = e.owner.reportBuildError(e, err) }
 	}
-	panicked := foundation.Guard(report, foundation.BuildPanicked, "while building "+e.String(), func() []any {
+	panicked := foundation.GuardLazy(report, foundation.BuildPanicked, func() string { return "while building " + e.String() }, func() []any {
 		return []any{"library", "widgets library", "element", e.String(), "creatorChain", e.DebugGetCreatorChain(12)}
 	}, func() {
 		child := e.widget.(*rawViewInternal).builder(e, e.ownerOfRender())

@@ -778,9 +778,13 @@ func (b *RenderObjectBase) layoutWithoutResize() {
 // panic in it and reports it with the tag and the method that was running. The
 // object is added to the report. Without a reporter the panic goes on.
 //
+// It runs on every layout, resize and paint of every render object, so the
+// context of the report is made only when there is a panic to report: a string
+// built on each call was a quarter of a scroll frame of Fishball's (step 52.1).
+//
 // Flutter: rendering/object.dart RenderObject._reportException
 func (b *RenderObjectBase) guard(tag, method string, fn func()) {
-	foundation.Guard(b.DebugOptions().ReportError, tag, "during "+method+"()", func() []any {
+	foundation.GuardLazy(b.DebugOptions().ReportError, tag, func() string { return "during " + method + "()" }, func() []any {
 		kv := []any{"library", "rendering library", "method", method, "object", foundation.DescribeIdentity(b.self)}
 		if b.DebugCreator != nil {
 			kv = append(kv, "creator", fmt.Sprint(b.DebugCreator))

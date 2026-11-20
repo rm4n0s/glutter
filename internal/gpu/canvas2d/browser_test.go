@@ -89,3 +89,41 @@ func TestBrowserKeepsTheMipmapsOfAPicture(t *testing.T) {
 		}
 	})
 }
+
+// TestBrowserLaysOutAndPaintsWithoutBuildingAString runs, in the page's Go in each browser, the
+// reproduction of Fishball's issue of step 52.1 (internal/issues, guard-allocs): the layout, resize
+// and paint of a render object, and the dispatch of a pointer event to a target, allocate nothing
+// for the recovery point around them, and a panic in each is still reported with the context that
+// names it. It draws nothing: the page app of this package runs it because it is the page that runs
+// the reproductions of issues. Before the step each layout and paint built the context of a report
+// that was not made.
+func TestBrowserLaysOutAndPaintsWithoutBuildingAString(t *testing.T) {
+	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+		defer cancel()
+		got, err := webtest.Await(ctx, webtest.ShotOptions{Dir: canvaswebSite(t), Browser: b, Query: url.Values{"mode": {"issue"}, "issue": {issues.GuardAllocsName}}, Width: 800, Height: 600, Timeout: 2 * time.Minute}, "canvasweb")
+		if err != nil {
+			t.Fatalf("Await in %s: %v", b, err)
+		}
+		var res struct {
+			Lines []string `json:"lines"`
+			Error string   `json:"error"`
+		}
+		if err := json.Unmarshal(got.Data, &res); err != nil {
+			t.Fatal(err)
+		}
+		if res.Error != "" {
+			t.Fatal(res.Error)
+		}
+		rep, err := issues.ParseGuardAllocs(res.Lines)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range rep.Lines() {
+			t.Log(line)
+		}
+		for _, problem := range rep.Problems() {
+			t.Error(problem)
+		}
+	})
+}

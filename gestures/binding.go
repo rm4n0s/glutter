@@ -458,7 +458,12 @@ func (b *GestureBinding) DispatchEvent(event PointerEvent, hitTestResult *HitTes
 	}
 	for _, entry := range hitTestResult.Path() {
 		// A target that panics is reported and the next one still gets the event.
-		foundation.Guard(b.errorReporter, foundation.CallbackPanicked, "while dispatching a pointer event to "+foundation.DescribeIdentity(entry.Target()),
+		// The context names the target only when there is a panic to report: it
+		// would otherwise be made for every target of every event (step 52.1).
+		foundation.GuardLazy(b.errorReporter, foundation.CallbackPanicked,
+			func() string {
+				return "while dispatching a pointer event to " + foundation.DescribeIdentity(entry.Target())
+			},
 			func() []any { return []any{"event", event.String()} },
 			func() { entry.Target().HandleEvent(event.Transformed(entry.Transform()), entry) })
 	}

@@ -19,9 +19,10 @@
 //
 // With GLUTTER_ISSUE=<name> it runs the reproduction of a reported issue instead (internal/issues;
 // atlas-full is the frame of many shadows of step 46.1; soft-mipmaps, a spinner over a picture of
-// step 49.1, is the software renderer's), with the same renderer, and writes
-// files/issues/<name>/<renderer>/report.txt (the lines of the issue's report), frame.png (the first
-// frame) and DONE.
+// step 49.1, is the software renderer's; guard-allocs, the allocations of the layout, paint and
+// dispatch of step 52.1, draws nothing and runs with any renderer), with the same renderer, and
+// writes files/issues/<name>/<renderer>/report.txt (the lines of the issue's report), frame.png (the
+// first frame, for an issue that draws) and DONE.
 package main
 
 import (
@@ -264,9 +265,9 @@ func (h *parity) drawAll() error {
 }
 
 // drawIssue runs the reproduction of the issue with the renderer (mipDraw is the software
-// renderer's, nil for another) and writes its report and its first frame into the directory. An
-// error of a frame, which is the issue itself on a renderer without its fix, ends the run with no
-// report.
+// renderer's, nil for another) and writes its report and its first frame, if it draws one, into
+// the directory. An error of a frame, which is the issue itself on a renderer without its fix, ends
+// the run with no report.
 func drawIssue(issue, dir string, draw sceneDrawer, mipDraw issues.SoftMipmapsDraw) error {
 	var (
 		lines []string
@@ -294,14 +295,20 @@ func drawIssue(issue, dir string, draw sceneDrawer, mipDraw issues.SoftMipmapsDr
 			return err
 		}
 		lines = rep.Lines()
+	case issues.GuardAllocsName:
+		lines = issues.RunGuardAllocs().Lines()
 	default:
-		return errors.New(tagParityIssueUnknown, "GLUTTER_ISSUE is not an issue that the program reproduces", "value", issue, "known", issues.AtlasFullName+" "+issues.SoftMipmapsName)
+		return errors.New(tagParityIssueUnknown, "GLUTTER_ISSUE is not an issue that the program reproduces", "value", issue,
+			"known", issues.AtlasFullName+" "+issues.SoftMipmapsName+" "+issues.GuardAllocsName)
 	}
 	for _, line := range lines {
 		slog.Info("android-parity: " + line)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "report.txt"), []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		return errors.NewErr(tagParityWriteFailed, err).SetMetadata("issue", issue)
+	}
+	if first == nil {
+		return nil
 	}
 	return goldens.WritePNG(filepath.Join(dir, "frame.png"), first)
 }

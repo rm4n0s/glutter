@@ -65,11 +65,16 @@ type issueResult struct {
 }
 
 // issue runs the reproduction of a reported issue with the canvas2d renderer, on a canvas of the
-// size the reproduction asks for, and reads a few pixels of each frame back from the canvas.
+// size the reproduction asks for, and reads a few pixels of each frame back from the canvas. The
+// reproduction of guard-allocs draws nothing: it runs in the page's Go, with no canvas.
 func issue(name string) issueResult {
 	var res issueResult
+	if name == issues.GuardAllocsName {
+		res.Lines = issues.RunGuardAllocs().Lines()
+		return res
+	}
 	if name != issues.SoftMipmapsName {
-		res.Error = "the query parameter issue is not " + issues.SoftMipmapsName + ": " + name
+		res.Error = "the query parameter issue is not " + issues.SoftMipmapsName + " or " + issues.GuardAllocsName + ": " + name
 		return res
 	}
 	doc := js.Global().Get("document")

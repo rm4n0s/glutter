@@ -135,3 +135,26 @@ func TestAndroidKeepsTheMipmapsOfAPicture(t *testing.T) {
 		t.Error(problem)
 	}
 }
+
+// TestAndroidLaysOutAndPaintsWithoutBuildingAString runs, in an app on the emulator, the
+// reproduction of Fishball's issue of step 52.1 (internal/issues, guard-allocs): the layout, resize
+// and paint of a render object, and the dispatch of a pointer event to a target, allocate nothing
+// for the recovery point around them, and a panic in each is still reported with the context that
+// names it. It draws nothing; the app runs it with the software renderer, the quickest to start.
+// Before the step each layout and paint built the context of a report that was not made.
+func TestAndroidLaysOutAndPaintsWithoutBuildingAString(t *testing.T) {
+	e := Shared(t, "glutter-37")
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	files := runIssue(ctx, t, e, issues.GuardAllocsName, "soft", nil, androidtool.BuildOptions{})
+	rep, err := issues.ParseGuardAllocs(strings.Split(string(files["report.txt"]), "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range rep.Lines() {
+		t.Log(line)
+	}
+	for _, problem := range rep.Problems() {
+		t.Error(problem)
+	}
+}

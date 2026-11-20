@@ -1267,3 +1267,20 @@ Step 51.2 (Glutter 1.17.8) handles the quit Apple event on macOS itself: it give
 2. An app whose `OnExitRequested` cancels a `SessionEnd` (mardp with unsaved work, if it asks): the logout stops and macOS names the app. When it does not, send the app's log.
 
 Answers: _(not yet recorded)_
+
+## 52.1 Layout, paint and dispatch build no context string
+
+Step 52.1 (Glutter 1.17.9) stops the recovery point of every layout, resize and paint of a render object from building the context of an error report (`"during PerformLayout()"`) on each call, and the dispatch of a pointer event from describing each target under the pointer, when nothing panicked (Fishball's issue of 2026-11-20: 27% of a scroll frame of 150 pictures). A panic is still reported with the same context. On the Linux machine the reproduction (`internal/issues`, `guard-allocs`: 200 leaves laid out, resized and painted through a binding with an error reporter, and a pointer event dispatched to 200 targets) passed on Linux, under Wine, under Node, in Chromium and Firefox and on the Android emulator. Each test logs a line `guard-allocs: debug true|false` and four lines `guard-allocs: case "..." allocs N context "..."`: in a release build layout, resize and paint `allocs 0.000000` and dispatch `allocs 1.000000` (the event in the target's coordinates); a debug build has `allocs 2.000000` for layout and resize (its check of the constraints). Before the fix a release build had 1, 2, 1 and 11. macOS and iOS are step 53.1, the Mac agent's. From the module root:
+
+**In Fishball**
+
+1. With Glutter 1.17.9, profile the scroll frame of the editor's Pictures section as on fix/smooth-generation (150 pictures, built eagerly if the old code is at hand). `runtime.concatstring3` from `rendering.(*RenderObjectBase).guard` should be gone from the profile. If it is not, send the profile (`go tool pprof -top`).
+
+**On a Windows PC** (the test passed under Wine)
+
+2. `go test -run LaysOutAndPaintsWithoutBuildingAString -v ./internal/issues`: it should pass, with the five lines in its output. When it fails, send its whole output.
+
+Answers:
+- Mac (step 53.1): _(not yet recorded)_
+- Fishball: _(not yet recorded)_
+- Windows PC: _(not yet recorded)_
