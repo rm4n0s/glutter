@@ -2219,7 +2219,8 @@ If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`
   a bundle, so it has no identifier, no icon of its own and no notifications.
 - **The plist.** The tool writes the `Info.plist` that Flutter keeps in `macos/Runner/Info.plist`: the bundle
   identifier (`-id dev.example.app`; `dev.glutter.<name>` without it), the name, the version
-  (`CFBundleShortVersionString` and `CFBundleVersion`), the icon, macOS 12 as the minimum, `NSHighResolutionCapable`,
+  (`CFBundleShortVersionString` and `CFBundleVersion`), the icon, macOS 13 as the minimum (`-min-macos 14.0` for a later one; the cgo code is built for it
+  too), `NSHighResolutionCapable`,
   and the usage string of the microphone. Another usage string (`NSCameraUsageDescription`, `NSLocationUsageDescription`
   and the rest) is `-usage KEY="text"`, repeatable; macOS shows it the first time the app asks.
 - **The icon.** `-icon logo.png` takes a square PNG of at least 16 pixels, and the tool scales it to the ten sizes of an
@@ -2238,6 +2239,11 @@ If you build Flutter apps for macOS, this is how a Glutter app becomes an `.app`
   xcrun notarytool submit App.zip --keychain-profile "notary" --wait
   xcrun stapler staple App.app
   ```
+  For your own Mac, `-sign "Apple Development: Your Name (TEAMID)"` (or any identity in your keychain) signs with it
+  instead of ad hoc, so that what you allowed the app (Screen Recording, Accessibility, which macOS ties to the
+  signature) stays allowed when you build it again.
+- **cgo.** The tool builds without cgo, as Glutter needs none. An app whose own packages need it builds with
+  `CGO_ENABLED=1 go run ./cmd/glutter-macos build ...`; the C code is compiled for the minimum of the plist.
   The Mac App Store needs the App Sandbox and a provisioning profile, which this tool does not make.
 - **Frames and displays.** A window follows its display: on macOS 14 and later the view's `CADisplayLink` gives
   the display's own rate (120 frames a second on a ProMotion Mac), on macOS 12 and 13 a `CVDisplayLink` does; a window

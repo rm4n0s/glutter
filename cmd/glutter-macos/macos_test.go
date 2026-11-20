@@ -165,7 +165,8 @@ func TestPerfReportDocument(t *testing.T) {
 func TestParseBuildFlags(t *testing.T) {
 	var bf buildFlags
 	fs := newFlagSetForTest(&bf)
-	pkg, err := parseWith(fs, []string{"-name", "Demo", "-id", "dev.x.demo", "-universal", "-hardened", "-debug", "-usage", "NSCameraUsageDescription=For pictures", "-o", "Out.app", "./x"}, io.Discard)
+	pkg, err := parseWith(fs, []string{"-name", "Demo", "-id", "dev.x.demo", "-universal", "-hardened", "-debug", "-usage", "NSCameraUsageDescription=For pictures", "-o", "Out.app",
+		"-sign", "Developer ID Application: Someone", "-min-macos", "14.0", "./x"}, io.Discard)
 	if err != nil || pkg != "./x" {
 		t.Fatalf("parse: %q, %v", pkg, err)
 	}
@@ -174,7 +175,7 @@ func TestParseBuildFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	if o.Name != "Demo" || o.ID != "dev.x.demo" || !slices.Equal(o.Archs, []string{"arm64", "amd64"}) || !o.Hardened || !o.Debug || o.Out != "Out.app" ||
-		o.Usage["NSCameraUsageDescription"] != "For pictures" {
+		o.Usage["NSCameraUsageDescription"] != "For pictures" || o.Sign.Identity != "Developer ID Application: Someone" || o.MinMacOS != "14.0" {
 		t.Errorf("options = %+v", o)
 	}
 	bf.usage = envFlags{"=nothing"}

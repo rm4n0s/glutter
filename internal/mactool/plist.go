@@ -5,21 +5,24 @@ import (
 	"encoding/xml"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/rm4n0s/errors"
 )
 
-// The defaults of an app's identity and the lowest macOS that runs it (D34: macOS 12 is the minimum).
+// The defaults of an app's identity and the lowest macOS that runs it (D34: macOS 13 is the minimum since step 51.1, the
+// go toolchain's: Go 1.27's linker builds its own objects for macOS 13.0).
 const (
 	// DefaultVersion is the version of an app that does not say.
 	//
 	// Flutter: no counterpart
 	DefaultVersion = "1.0.0"
-	// MinSystemVersion is the LSMinimumSystemVersion of every bundle.
+	// MinSystemVersion is the LSMinimumSystemVersion of a bundle that names none (Info.MinSystemVersion), and the lowest
+	// one a bundle can name.
 	//
 	// Flutter: no counterpart
-	MinSystemVersion = "12.0"
+	MinSystemVersion = "13.0"
 )
 
 // Info is what goes into the Info.plist of an app bundle.
@@ -39,6 +42,9 @@ type Info struct {
 	// Usage are the usage strings that the system shows when the app first asks for something: the keys are those of the plist
 	// ("NSMicrophoneUsageDescription"), the values the text.
 	Usage map[string]string
+	// MinSystemVersion is the oldest macOS that runs the app (LSMinimumSystemVersion), "major.minor" or
+	// "major.minor.patch"; MinSystemVersion (the constant) when empty.
+	MinSystemVersion string
 }
 
 // DefaultUsage are the usage strings that every bundle has: the system asks for the microphone only when an app records, and
@@ -49,7 +55,31 @@ func DefaultUsage(name string) map[string]string {
 	return map[string]string{"NSMicrophoneUsageDescription": name + " records sound when you use a feature that needs the microphone."}
 }
 
-var idPattern = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+var (
+	idPattern      = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
+	versionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+(\.[0-9]+)?$`)
+)
+
+// versionAtLeast reports whether v is a version of macOS ("14.0", "13.5.1") that is not under floor.
+func versionAtLeast(v, floor string) bool {
+	if !versionPattern.MatchString(v) {
+		return false
+	}
+	a, b := strings.Split(v, "."), strings.Split(floor, ".")
+	for k := range max(len(a), len(b)) {
+		x, y := 0, 0
+		if k < len(a) {
+			x, _ = strconv.Atoi(a[k])
+		}
+		if k < len(b) {
+			y, _ = strconv.Atoi(b[k])
+		}
+		if x != y {
+			return x > y
+		}
+	}
+	return true
+}
 
 // DefaultID is the identifier of an app that has none: "dev.glutter." and the name in letters, digits and hyphens.
 //
@@ -85,6 +115,13 @@ func InfoPlist(i Info) ([]byte, error) {
 		return nil, errors.New(tagMacOSBundleInvalid, "the bundle identifier is letters, digits and hyphens in at least two parts divided by dots", "id", i.ID)
 	case i.Version == "" || strings.ContainsAny(i.Version, "<>&\x00"):
 		return nil, errors.New(tagMacOSBundleInvalid, "the version is empty or has a character that a plist cannot hold", "version", i.Version)
+	case i.MinSystemVersion != "" && !versionAtLeast(i.MinSystemVersion, MinSystemVersion):
+		return nil, errors.New(tagMacOSBundleInvalid, "the minimum macOS is a version such as 14.0, not under "+MinSystemVersion,
+			"min", i.MinSystemVersion)
+	}
+	minOS := i.MinSystemVersion
+	if minOS == "" {
+		minOS = MinSystemVersion
 	}
 	var b plistWriter
 	b.begin()
@@ -100,7 +137,7 @@ func InfoPlist(i Info) ([]byte, error) {
 	if i.IconFile != "" {
 		b.str("CFBundleIconFile", i.IconFile)
 	}
-	b.str("LSMinimumSystemVersion", MinSystemVersion)
+	b.str("LSMinimumSystemVersion", minOS)
 	b.str("NSPrincipalClass", "NSApplication")
 	b.boolean("NSHighResolutionCapable", true)
 	b.boolean("NSSupportsAutomaticGraphicsSwitching", true)

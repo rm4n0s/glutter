@@ -45,7 +45,7 @@ func TestInfoPlist(t *testing.T) {
 		"<key>CFBundleShortVersionString</key>\n\t<string>1.2.3</string>",
 		"<key>CFBundleVersion</key>\n\t<string>1.2.3</string>",
 		"<key>CFBundleIconFile</key>\n\t<string>counter</string>",
-		"<key>LSMinimumSystemVersion</key>\n\t<string>12.0</string>",
+		"<key>LSMinimumSystemVersion</key>\n\t<string>13.0</string>",
 		"<key>NSHighResolutionCapable</key>\n\t<true/>",
 		"<key>NSPrincipalClass</key>\n\t<string>NSApplication</string>",
 		// The name and the usage strings are escaped.
@@ -62,6 +62,11 @@ func TestInfoPlist(t *testing.T) {
 	again, _ := InfoPlist(i)
 	if !bytes.Equal(data, again) {
 		t.Error("the plist is not the same on a second call")
+	}
+	// The minimum is the app's when it names one.
+	i.MinSystemVersion = "14.2"
+	if data, _ := InfoPlist(i); !strings.Contains(string(data), "<key>LSMinimumSystemVersion</key>\n\t<string>14.2</string>") {
+		t.Errorf("the plist has not the app's minimum:\n%s", data)
 	}
 	// Without an icon the key is not there.
 	i.IconFile = ""
@@ -86,6 +91,9 @@ func TestInfoPlistRefusesWhatABundleCannotHave(t *testing.T) {
 		{"an id with a slash", func(i *Info) { i.ID = "dev/glutter.app" }},
 		{"no version", func(i *Info) { i.Version = "" }},
 		{"a version with a bracket", func(i *Info) { i.Version = "<1>" }},
+		{"a minimum under macOS 13", func(i *Info) { i.MinSystemVersion = "12.7" }},
+		{"a minimum without its minor number", func(i *Info) { i.MinSystemVersion = "14" }},
+		{"a minimum that is not a version", func(i *Info) { i.MinSystemVersion = "fourteen" }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,8 +103,11 @@ func TestInfoPlistRefusesWhatABundleCannotHave(t *testing.T) {
 			routeOf(t, err, "InfoPlist.MacOSBundleInvalid")
 		})
 	}
-	if _, err := InfoPlist(good); err != nil {
-		t.Errorf("the good identity: %v", err)
+	for _, min := range []string{"", "13.0", "13.0.1", "13.5", "14.0", "26.1"} {
+		good.MinSystemVersion = min
+		if _, err := InfoPlist(good); err != nil {
+			t.Errorf("the good identity with the minimum %q: %v", min, err)
+		}
 	}
 }
 
@@ -444,6 +455,152 @@ func TestBuildThinRunsOnThisMac(t *testing.T) {
 	routeOf(t, Verify(context.Background(), res.Layout.App, SignOptions{}), "Verify.MacOSSignFailed")
 }
 
+// lastValue is the value that a process gets for a variable of env: the last one, as os/exec keeps it.
+func lastValue(env []string, name string) (string, bool) {
+	v, ok := "", false
+	for _, kv := range env {
+		if k, val, _ := strings.Cut(kv, "="); k == name {
+			v, ok = val, true
+		}
+	}
+	return v, ok
+}
+
+func TestBuildEnv(t *testing.T) {
+	tests := []struct {
+		name                string
+		environ             []string
+		arch, min           string
+		cgo, goarch, deploy string
+		cflags              string
+	}{
+		{"without cgo by default", []string{"HOME=/h"}, "arm64", "", "0", "arm64", "13.0", "-O2 -g -mmacosx-version-min=13.0"},
+		{"cgo when the environment asks", []string{"CGO_ENABLED=1"}, "amd64", "14.0", "1", "amd64", "14.0", "-O2 -g -mmacosx-version-min=14.0"},
+		{"no cgo when the environment says so", []string{"CGO_ENABLED=0"}, "arm64", "", "0", "arm64", "13.0", "-O2 -g -mmacosx-version-min=13.0"},
+		{"the minimum wins over the environment's", []string{"MACOSX_DEPLOYMENT_TARGET=27.2", "GOOS=linux", "CGO_CFLAGS=-Os -I/x"},
+			"", "15.1", "0", "", "15.1", "-Os -I/x -mmacosx-version-min=15.1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := BuildEnv(tt.environ, tt.arch, tt.min)
+			if v, _ := lastValue(env, "GOOS"); v != "darwin" {
+				t.Errorf("GOOS = %q", v)
+			}
+			if v, _ := lastValue(env, "CGO_ENABLED"); v != tt.cgo {
+				t.Errorf("CGO_ENABLED = %q, want %q", v, tt.cgo)
+			}
+			if v, _ := lastValue(env, "GOARCH"); v != tt.goarch {
+				t.Errorf("GOARCH = %q, want %q", v, tt.goarch)
+			}
+			if v, _ := lastValue(env, "MACOSX_DEPLOYMENT_TARGET"); v != tt.deploy {
+				t.Errorf("MACOSX_DEPLOYMENT_TARGET = %q, want %q", v, tt.deploy)
+			}
+			if v, _ := lastValue(env, "CGO_CFLAGS"); v != tt.cflags {
+				t.Errorf("CGO_CFLAGS = %q, want %q", v, tt.cflags)
+			}
+			if v, _ := lastValue(env, "CGO_LDFLAGS"); !strings.HasSuffix(v, "-mmacosx-version-min="+tt.deploy) {
+				t.Errorf("CGO_LDFLAGS = %q", v)
+			}
+		})
+	}
+	// The caller's slice is not written to.
+	environ := make([]string, 1, 8)
+	environ[0] = "A=1"
+	_ = BuildEnv(environ, "arm64", "")
+	if got := environ[:cap(environ)][1]; got != "" {
+		t.Errorf("BuildEnv wrote %q past the end of the caller's slice", got)
+	}
+}
+
+// minOS reads the minimum macOS of a thin Mach-O file.
+func minOS(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok := MinOSOf(data)
+	if !ok {
+		t.Fatalf("%s has no minimum macOS", path)
+	}
+	return v
+}
+
+const cgoMain = "package main\n\n// int answer(void) { return 42; }\nimport \"C\"\n\nfunc main() { println(\"hello\", int(C.answer())) }\n"
+
+// TestBuildWithCgoForTheMinimum is mardp's two issues of the build (SPEC §29.1, step 51.1): a package that needs cgo
+// builds when the environment has CGO_ENABLED=1, and the executable is built for the minimum that the plist names, not
+// for the macOS of this machine.
+func TestBuildWithCgoForTheMinimum(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("builds with clang and runs the program: a Mac only")
+	}
+	if _, err := exec.LookPath("clang"); err != nil {
+		t.Skip("no clang")
+	}
+	dir := tinyModule(t, cgoMain)
+	// Without cgo the package has no Go file to build: the tool's old behaviour.
+	t.Setenv("CGO_ENABLED", "0")
+	routeOf(t, func() error {
+		_, err := Build(context.Background(), BuildOptions{Package: ".", Dir: dir, Out: filepath.Join(t.TempDir(), "No.app")})
+		return err
+	}(), "BuildOptions.compile.MacOSBuildFailed")
+
+	t.Setenv("CGO_ENABLED", "1")
+	out := filepath.Join(t.TempDir(), "Cgo.app")
+	res, err := Build(context.Background(), BuildOptions{Package: ".", Dir: dir, Out: out, Name: "Cgo", MinMacOS: "14.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := exec.Command(res.Layout.Executable).CombinedOutput()
+	if err != nil || strings.TrimSpace(string(got)) != "hello 42" {
+		t.Errorf("the bundled program printed %q, %v", got, err)
+	}
+	if v := minOS(t, res.Layout.Executable); v != "14.0" {
+		t.Errorf("the executable's minimum macOS is %s, want 14.0", v)
+	}
+	plist, err := os.ReadFile(filepath.Join(res.Layout.App, "Contents", "Info.plist"))
+	if err != nil || !strings.Contains(string(plist), "<string>14.0</string>") || res.Info.MinSystemVersion != "14.0" {
+		t.Errorf("the plist's minimum: %v, %+v", err, res.Info)
+	}
+	if err := Verify(context.Background(), res.Layout.App, SignOptions{}); err != nil {
+		t.Errorf("verify: %v", err)
+	}
+	// An executable linked for a newer macOS than the bundle's minimum is refused: here the app's own linker flags.
+	_, err = Build(context.Background(), BuildOptions{Package: ".", Dir: dir, Out: filepath.Join(t.TempDir(), "Newer.app"), MinMacOS: "14.0",
+		Env: []string{"CGO_LDFLAGS=-mmacosx-version-min=15.0"}})
+	routeOf(t, err, "Build.MacOSBuildFailed")
+	// The default minimum is not under what the go toolchain builds for: an executable that Go 1.27 links itself needs
+	// macOS 13.0, whatever MACOSX_DEPLOYMENT_TARGET says (D34).
+	t.Setenv("CGO_ENABLED", "0")
+	plain := tinyModule(t, tinyMain)
+	res, err = Build(context.Background(), BuildOptions{Package: ".", Dir: plain, Out: filepath.Join(t.TempDir(), "Plain.app")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := minOS(t, res.Layout.Executable); !versionAtLeast(MinSystemVersion, v) {
+		t.Errorf("the go toolchain builds for macOS %s, over MinSystemVersion %s: raise it (D34)", v, MinSystemVersion)
+	}
+}
+
+func TestMinOSOf(t *testing.T) {
+	if _, ok := MinOSOf([]byte("not a Mach-O")); ok {
+		t.Error("a minimum for data that is not a Mach-O")
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		t.Skip(err)
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, ok := MinOSOf(data)
+	if runtime.GOOS == "darwin" && (!ok || !versionPattern.MatchString(v)) {
+		t.Errorf("the test binary's minimum = %q, %v", v, ok)
+	}
+}
+
 func TestBuildErrors(t *testing.T) {
 	needGo(t)
 	ctx := context.Background()
@@ -456,6 +613,7 @@ func TestBuildErrors(t *testing.T) {
 		{"no package", BuildOptions{}, "Build.MacOSBuildFailed"},
 		{"an architecture that is not one", BuildOptions{Package: ".", Dir: dir, Archs: []string{"ppc"}}, "Build.MacOSBuildFailed"},
 		{"a bad identity", BuildOptions{Package: ".", Dir: dir, ID: "nodots"}, "InfoPlist.MacOSBundleInvalid"},
+		{"a minimum under macOS 13", BuildOptions{Package: ".", Dir: dir, MinMacOS: "12.0"}, "InfoPlist.MacOSBundleInvalid"},
 		{"an icon that is not there", BuildOptions{Package: ".", Dir: dir, Icon: filepath.Join(dir, "nope.png")}, "BuildOptions.iconPNG.MacOSIconInvalid"},
 		{"an icon that is not a picture", BuildOptions{Package: ".", Dir: dir, Icon: filepath.Join(dir, "main.go")}, "ICNS.MacOSIconInvalid"},
 		{"a program that does not compile", BuildOptions{Package: ".", Dir: dir, Out: filepath.Join(t.TempDir(), "X.app")}, "BuildOptions.compile.MacOSBuildFailed"},

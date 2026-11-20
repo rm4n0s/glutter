@@ -3,11 +3,14 @@ package mactool
 import (
 	"bytes"
 	"context"
+	"debug/macho"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/rm4n0s/errors"
 )
@@ -36,8 +39,12 @@ type BuildOptions struct {
 	Icon string
 	// Usage are usage strings added to those of DefaultUsage (a key of the plist and its text).
 	Usage map[string]string
-	// Env is added to the environment of the go command.
+	// Env is added to the environment of the go command, after BuildEnv.
 	Env []string
+	// MinMacOS is the oldest macOS the app runs on, "14.0": it goes into the plist (LSMinimumSystemVersion) and is the
+	// MACOSX_DEPLOYMENT_TARGET of the go command, for the cgo code and the external linker. MinSystemVersion when empty;
+	// a version under it fails with MacOSBundleInvalid.
+	MinMacOS string
 	// Sign says how to sign the bundle; the zero value signs it ad hoc.
 	Sign SignOptions
 }
@@ -72,7 +79,7 @@ func DefaultName(pkg, dir string) string {
 	return filepath.Base(filepath.ToSlash(pkg))
 }
 
-// Build compiles the package for each architecture without cgo, makes the executable (universal when there are two), the icon and
+// Build compiles the package for each architecture (without cgo unless the environment sets CGO_ENABLED, BuildEnv), makes the executable (universal when there are two), the icon and
 // the bundle, and signs it. It fails with MacOSBuildFailed, with the output of the go command, when the package does not build, and
 // with the tags of the pieces (MacOSIconInvalid, MacOSMachOInvalid, MacOSBundleInvalid, MacOSSignFailed) otherwise.
 //
@@ -99,12 +106,16 @@ func Build(ctx context.Context, o BuildOptions) (BuildResult, error) {
 	if name == "" {
 		name = DefaultName(o.Package, o.Dir)
 	}
-	info := Info{Executable: name, ID: o.ID, Name: name, Version: o.Version, IconFile: name, Usage: DefaultUsage(name)}
+	info := Info{Executable: name, ID: o.ID, Name: name, Version: o.Version, IconFile: name, Usage: DefaultUsage(name),
+		MinSystemVersion: o.MinMacOS}
 	if info.ID == "" {
 		info.ID = DefaultID(name)
 	}
 	if info.Version == "" {
 		info.Version = DefaultVersion
+	}
+	if info.MinSystemVersion == "" {
+		info.MinSystemVersion = MinSystemVersion
 	}
 	for k, v := range o.Usage {
 		info.Usage[k] = v
@@ -129,9 +140,13 @@ func Build(ctx context.Context, o BuildOptions) (BuildResult, error) {
 	res.Thin = map[string]int64{}
 	var thin []FatSlice
 	for _, a := range archs {
-		data, err := o.compile(ctx, filepath.Join(tmp, "app-"+a), a)
+		data, err := o.compile(ctx, filepath.Join(tmp, "app-"+a), a, info.MinSystemVersion)
 		if err != nil {
 			return res, err
+		}
+		if v, ok := MinOSOf(data); ok && !versionAtLeast(info.MinSystemVersion, v) {
+			return res, errors.New(tagMacOSBuildFailed, "the executable needs a newer macOS than the minimum of the bundle (the go toolchain's or the cgo code's)",
+				"arch", a, "executable", v, "minimum", info.MinSystemVersion)
 		}
 		res.Thin[a] = int64(len(data))
 		thin = append(thin, FatSlice{Name: a, Data: data})
@@ -169,8 +184,78 @@ func (o BuildOptions) iconPNG() ([]byte, error) {
 	return data, nil
 }
 
+// BuildEnv is the environment of the go command that builds an app for macOS: environ with GOOS=darwin, GOARCH=arch (when
+// arch is not empty), CGO_ENABLED=0 unless environ sets CGO_ENABLED (an app whose packages need cgo is built with
+// CGO_ENABLED=1 in the environment), and the minimum (MinSystemVersion when empty) as MACOSX_DEPLOYMENT_TARGET and as
+// -mmacosx-version-min after the CGO_CFLAGS and CGO_LDFLAGS of environ (go's own -O2 -g when it has none), so that clang
+// compiles the cgo code and links for the macOS that the plist names, not for the macOS of the machine that builds; the
+// flags are there because the go command's cache does not tell objects apart by MACOSX_DEPLOYMENT_TARGET.
+//
+// Flutter: no counterpart
+func BuildEnv(environ []string, arch, minMacOS string) []string {
+	if minMacOS == "" {
+		minMacOS = MinSystemVersion
+	}
+	env := append(slices.Clip(environ), "GOOS=darwin")
+	if arch != "" {
+		env = append(env, "GOARCH="+arch)
+	}
+	cgo := false
+	flags := map[string]string{"CGO_CFLAGS": "-O2 -g", "CGO_LDFLAGS": "-O2 -g"}
+	for _, kv := range environ {
+		k, v, _ := strings.Cut(kv, "=")
+		if k == "CGO_ENABLED" {
+			cgo = true
+		}
+		if _, ok := flags[k]; ok {
+			flags[k] = v
+		}
+	}
+	if !cgo {
+		env = append(env, "CGO_ENABLED=0")
+	}
+	for _, k := range []string{"CGO_CFLAGS", "CGO_LDFLAGS"} {
+		env = append(env, k+"="+strings.TrimSpace(flags[k]+" -mmacosx-version-min="+minMacOS))
+	}
+	return append(env, "MACOSX_DEPLOYMENT_TARGET="+minMacOS)
+}
+
+// MinOSOf reads the oldest macOS that a thin Mach-O executable runs on, from its LC_BUILD_VERSION (or its older
+// LC_VERSION_MIN_MACOSX), as "13.0" or "14.2.1". It reports false for data that is not a Mach-O or has neither command.
+//
+// Flutter: no counterpart
+func MinOSOf(data []byte) (string, bool) {
+	f, err := macho.NewFile(bytes.NewReader(data))
+	if err != nil {
+		return "", false
+	}
+	defer func() { _ = f.Close() }() // a file over memory
+	const lcVersionMinMacOSX, lcBuildVersion = 0x24, 0x32
+	for _, l := range f.Loads {
+		raw := l.Raw()
+		if len(raw) < 16 {
+			continue
+		}
+		var v uint32
+		switch f.ByteOrder.Uint32(raw) {
+		case lcBuildVersion:
+			v = f.ByteOrder.Uint32(raw[12:])
+		case lcVersionMinMacOSX:
+			v = f.ByteOrder.Uint32(raw[8:])
+		default:
+			continue
+		}
+		s := strconv.Itoa(int(v>>16)) + "." + strconv.Itoa(int(v>>8&0xff))
+		if v&0xff != 0 {
+			s += "." + strconv.Itoa(int(v&0xff))
+		}
+		return s, true
+	}
+	return "", false
+}
+
 // compile runs `go build` for one architecture and reads the file it wrote.
-func (o BuildOptions) compile(ctx context.Context, out, arch string) ([]byte, error) {
+func (o BuildOptions) compile(ctx context.Context, out, arch, minMacOS string) ([]byte, error) {
 	args := []string{"build", "-o", out}
 	if o.Debug {
 		args = append(args, "-tags", "debug_mode")
@@ -181,7 +266,7 @@ func (o BuildOptions) compile(ctx context.Context, out, arch string) ([]byte, er
 	var log bytes.Buffer
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = o.Dir
-	cmd.Env = append(append(os.Environ(), "GOOS=darwin", "GOARCH="+arch, "CGO_ENABLED=0"), o.Env...)
+	cmd.Env = append(BuildEnv(os.Environ(), arch, minMacOS), o.Env...)
 	cmd.Stdout, cmd.Stderr = &log, &log
 	if err := cmd.Run(); err != nil {
 		return nil, errors.NewErr(tagMacOSBuildFailed, err).SetMetadata("package", o.Package, "arch", arch, "output", log.String())

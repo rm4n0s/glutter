@@ -15,6 +15,7 @@ import (
 // buildFlags are the flags that make a bundle: those of `build`, and of `run`, `shot -bundle` and `perf`, which build one first.
 type buildFlags struct {
 	out, name, id, version, icon string
+	sign, minMacOS               string
 	universal, hardened, debug   bool
 	usage                        envFlags
 }
@@ -32,12 +33,14 @@ func (b *buildFlags) add(fs *flag.FlagSet, keepOut bool) {
 	fs.BoolVar(&b.hardened, "hardened", false, "sign with the hardened runtime and the entitlements of the microphone, as a notarized app needs")
 	fs.BoolVar(&b.debug, "debug", false, "build with -tags debug_mode, not stripped (a release build, stripped with -ldflags=-s -w, otherwise)")
 	fs.Var(&b.usage, "usage", "a usage string for the plist, KEY=text (repeatable), such as NSCameraUsageDescription=...")
+	fs.StringVar(&b.sign, "sign", "", "the identity to sign with, as codesign takes it (a name in the keychain or a SHA-1); ad hoc (-) by default")
+	fs.StringVar(&b.minMacOS, "min-macos", "", "the oldest macOS the app runs on, such as 14.0: the plist's LSMinimumSystemVersion and the build's MACOSX_DEPLOYMENT_TARGET (default "+mactool.MinSystemVersion+")")
 }
 
 // options makes the options of mactool.Build.
 func (b *buildFlags) options(pkg string) (mactool.BuildOptions, error) {
 	o := mactool.BuildOptions{Package: pkg, Out: b.out, Name: b.name, ID: b.id, Version: b.version, Icon: b.icon, Debug: b.debug,
-		Hardened: b.hardened, Usage: map[string]string{}}
+		Hardened: b.hardened, Usage: map[string]string{}, MinMacOS: b.minMacOS, Sign: mactool.SignOptions{Identity: b.sign}}
 	if b.universal {
 		o.Archs = []string{"arm64", "amd64"}
 	}

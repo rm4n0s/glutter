@@ -6393,3 +6393,18 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Release:** none: the library did not change (1.17.7 is step 47.1's). M50 is published with this step.
 - **Proof:** none. **Manual checks:** section 49.1 of `docs/MANUAL-CHECKS.md`: the Mac's answers are recorded; Fishball's and the Windows PC's are still open.
 - **Deviations and follow-ups:** SPEC §17 (the software renderer's issue on macOS and iOS: the tests that run it).
+
+## 51.1 glutter-macos builds a cgo app, signs it with an identity and builds for the minimum it writes
+
+- **Date:** 2026-11-20
+- **Branch:** fix/macos-build-flags
+- **Summary:** three of mardp's issues of 1.17.7, each checked true on the Mac first.
+  1. *cgo:* `mactool.BuildEnv` is the go command's environment for `Build` and for `shot` without `-bundle`: `CGO_ENABLED=0` only when the environment does not set `CGO_ENABLED`, so `CGO_ENABLED=1 glutter-macos build` builds an app whose packages need cgo (before, the package with `import "C"` had "no Go files" for the build).
+  2. *Signing:* `-sign <identity>` fills `SignOptions.Identity`; ad hoc without it.
+  3. *The minimum:* `-min-macos` (`BuildOptions.MinMacOS`, `Info.MinSystemVersion`) goes into `LSMinimumSystemVersion` and into the build as `MACOSX_DEPLOYMENT_TARGET` and `-mmacosx-version-min` in `CGO_CFLAGS` and `CGO_LDFLAGS`: a cgo build had `minos` 27.2, the macOS of this Mac, and with `MACOSX_DEPLOYMENT_TARGET` alone the go command's cache still linked cgo objects built for 27.2 (ld warned). `MinOSOf` reads the executable's `LC_BUILD_VERSION`, and `Build` fails with `MacOSBuildFailed` for an executable that needs a newer macOS than the bundle's minimum.
+  4. *Found on the way:* Go 1.27's linker builds its own objects for macOS 13.0 (`minos` 13.0 of every plain build, and ld's warning about `go.o` in a cgo build for 12.0), so the plist's 12.0 was never true. `MinSystemVersion` is 13.0, the default and the lowest a bundle can name (D34 updated).
+- **Tests:** `mactool.TestBuildEnv` (the defaults, cgo from the environment, the minimum over the environment's, the cgo flags kept and extended, the caller's slice untouched), `TestBuildWithCgoForTheMinimum` (Mac: a cgo package fails with `CGO_ENABLED=0` and builds with `CGO_ENABLED=1` and `-min-macos 14.0`, runs, has `minos` 14.0 and the plist's 14.0, verifies; an app's own `CGO_LDFLAGS` for 15.0 fails with `Build.MacOSBuildFailed`; the default minimum is not under the toolchain's), `TestMinOSOf`, `TestInfoPlist` (the app's minimum), `TestInfoPlistRefusesWhatABundleCannotHave` (three rows of the minimum), `TestBuildErrors` (a minimum under 13.0), `glutter-macos`'s `TestParseBuildFlags` (`-sign`, `-min-macos`).
+- **Checks (on a Mac):** run once for M51 on the tree of step 51.3, which holds this step: see 51.3.
+- **Release:** none of its own: 1.17.8 is step 51.3's.
+- **Proof:** none. **Manual checks:** none.
+- **Deviations and follow-ups:** SPEC D34, §29 (the minimum), §29.1 ("Decided in step 51.1"); README (macOS, the build commands); GUIDE (the plist, `-sign`, cgo); the usage of `glutter-macos`. The build has no `-env`: `run`, `shot` and `perf` use that name for the app's environment, and the environment carries `CGO_ENABLED`.

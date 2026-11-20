@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/mactool"
 )
 
 // envFlags collects the -env GLUTTER_X=v flags.
@@ -111,7 +112,7 @@ func runShot(ctx context.Context, args []string, stdout, stderr io.Writer) error
 			args = append(args, "-ldflags=-s -w")
 		}
 		build := exec.CommandContext(ctx, "go", append(args, o.pkg)...)
-		build.Env = append(os.Environ(), "CGO_ENABLED=0")
+		build.Env = mactool.BuildEnv(os.Environ(), "", o.bf.minMacOS)
 		build.Stdout, build.Stderr = &buildOut, &buildOut
 		if err := build.Run(); err != nil {
 			return errors.NewErr(tagMacOSShotFailed, err).SetMetadata("package", o.pkg, "output", buildOut.String())

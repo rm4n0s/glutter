@@ -4961,3 +4961,34 @@ This milestone is for the agent on the owner's Mac (Apple silicon; rule 8 has th
 **Tests:** **Display tests** (on the Mac): `engine.TestDisplayKeepsTheMipmapsOfAPicture` (macOS). **Simulator tests:** `iostest.TestIOSKeepsTheMipmapsOfAPicture`. The checks "On a Mac" of rule 8.
 **Proof:** none. **Manual checks:** none.
 **Done when:** the default "Done when" with the checks "On a Mac", and both tests pass there. No version unless the library changes.
+
+## M51: Fixes found by mardp (1.17.8)
+
+This milestone is for the agent on the owner's Mac: every issue is of macOS, and only a Mac builds a cgo app for it, signs it with an identity and answers the quit Apple events. On 2026-11-20 the owner passed on mardp's list of Glutter issues (`docs/GLUTTER-ISSUES.md` of mardp, on 1.17.7) and asked for the true ones to be fixed. Of its five entries four are true; the fifth ("The fake desktop serves only the Linux tray") is not: `gluttertest.FakeDesktop` replaces the platform's desktop on every platform, so a test of a `desktop.SystemTray` passes with the target platform macOS too (mardp's own window tests pass on the Mac with their Linux override removed). The documentation did not say so; step 51.3 says it and tests it.
+
+### 51.1 glutter-macos builds a cgo app, signs it with an identity and builds for the minimum it writes
+**Goal:** `glutter-macos build` (and `run`, `shot -bundle`, `perf`) builds an app whose packages need cgo when `CGO_ENABLED=1` is in the environment, signs it with an identity of `-sign`, and builds and writes the oldest macOS of `-min-macos` (12.0 by default) into both the plist and the cgo code.
+**Why:** mardp's issues "glutter-macos builds without cgo", "glutter-macos signs only ad hoc" and "glutter-macos builds for the macOS that builds". `BuildOptions.compile` put `CGO_ENABLED=0` after the environment, so a cgo app did not build; `SignOptions.Identity` had no flag, and macOS ties Screen Recording and Accessibility to the signature, which an ad hoc build changes at every build; `LSMinimumSystemVersion` was always 12.0 while clang, which compiles the cgo code and links, built for the macOS of the machine (its default without `MACOSX_DEPLOYMENT_TARGET`), so the executable did not open on an older system. mardp works around all three in `scripts/build-app.sh`.
+**Read:** SPEC §29.1 ("Decided in step 33.15"); `internal/mactool/{build,plist,sign}.go`, `cmd/glutter-macos/{app,build,shot}.go`.
+**Tasks:** `mactool.BuildEnv` is the environment of the go command (GOOS, GOARCH, `CGO_ENABLED=0` unless the environment sets it, `MACOSX_DEPLOYMENT_TARGET`), used by `Build` and by `shot` without `-bundle`; `BuildOptions.MinMacOS` and `Info.MinSystemVersion` (checked: a version of at least 12.0, `MacOSBundleInvalid` otherwise); the flags `-sign` and `-min-macos` of the shared build flags. SPEC §29.1, README, CLAUDE.md.
+**Tests:** `mactool.TestBuildEnv`, the plist's minimum and its errors, the flags into the options; on the Mac a cgo package built with `CGO_ENABLED=1` and `-min-macos 14.0`, whose executable's `minos` is 14.0.
+**Proof:** none. **Manual checks:** none.
+**Done when:** the default "Done when" with the checks "On a Mac". No release of its own: 1.17.8 is made by the last step of M51.
+
+### 51.2 macOS says why the app is asked to exit, and a logout is not cancelled
+**Goal:** the app can tell the close button, its Quit (Cmd+Q, the app menu, the Dock) and the end of the session (logout, restart, shutdown) apart while it answers an exit request; a quit Apple event that the app agrees to is answered with no error, so a logout goes on.
+**Why:** mardp's issue "Cmd+Q, the close button and a logout are one request on macOS". All three reached `OnExitRequested` through `OnCloseRequest` with nothing that told them apart, and `applicationShouldTerminate:` answered `NSTerminateCancel` before the app had decided: AppKit's handler of the quit Apple event then replies "User cancelled" (-128), which stops a logout even when the app quits (checked on the Mac with `osascript` and `«event aevtquit»` with the reason `logo`: the app quit and the reply was -128). The issue proposes `NSTerminateLater` and `replyToApplicationShouldTerminate:`; a reply YES makes AppKit end the process with `exit` before `Run` returns, so the app's code after `RunApp` would not run.
+**Read:** SPEC §8.7 ("Closing"), §29.8 ("Decided in step 33.6", *Quit*); `ui/platform_dispatcher.go` (`RequestClose`), `ui/lifecycle.go`, `internal/platform/platform.go` (`Handler`), `internal/engine/engine.go` (`OnCloseRequest`), `internal/platform/macos/{classes,platform}_darwin.go`, `gluttertest/windows.go`, `internal/platform/fake/events.go`.
+**Tasks:** `ui.AppExitReason` and `PlatformDispatcher.ExitRequestReason`/`RequestCloseFor`; `platform.CloseReasonHandler`, which the engine implements; macOS installs its own handler of the quit Apple event, reads the reason (`keyAEQuitReason`), asks the windows and replies `userCanceledErr` only when the app refuses; `applicationShouldTerminate:` asks with the reason Quit. `gluttertest.Tester.RequestWindowCloseFor` and the fake's `CloseRequestEvent.Reason`. SPEC §8.7, §29.8, §12.10; README.
+**Tests:** the dispatcher's reason during and after the request, the engine's handler, the fake event; on the Mac (`glutter_display`) the quit Apple event with each reason, an app that refuses (the reply -128) and one that agrees (no error, the loop ends), and Cmd+Q's reason.
+**Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md` section 51.2: a Glutter app that agrees to quit does not stop a logout.
+**Done when:** the default "Done when" with the checks "On a Mac". No release of its own.
+
+### 51.3 The fake desktop's tray on every platform
+**Goal:** the documentation of `gluttertest.FakeDesktop` says that it replaces the platform's desktop (the D-Bus services, the Windows and macOS desktop, the web's and Android's) on every platform, and a test shows the fake tray with each target platform.
+**Why:** mardp's issue "The fake desktop serves only the Linux tray" took the D-Bus of the fake for the Linux tray and set the target platform to Linux in its tests; `desktop.InstallBus` already drops the platform's desktop.
+**Read:** `gluttertest/desktop.go`, `desktop/install.go`, `desktop/tray.go`.
+**Tasks:** the doc comments of `FakeDesktop` and `InstallBus`; SPEC §17 (the fake desktop), README.
+**Tests:** `gluttertest.TestFakeDesktopTrayOnEveryTargetPlatform`.
+**Proof:** none. **Manual checks:** none.
+**Done when:** the default "Done when". Release **1.17.8** (`v1.17.8` on the commit of `step-51.3`), and M51 is published.

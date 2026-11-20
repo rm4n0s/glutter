@@ -233,7 +233,7 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 - **iOS** (the "iOS" section below): UIKit and Metal, on the Simulator and on a device, from iOS 15: touch, the Pencil, the pointer and hardware keyboards, the soft keyboard and input methods, the pasteboard, haptics, notifications, the spell checker, VoiceOver and Dynamic Type, game controllers, audio with the audio session, Core Motion, and `glutter-ios`, which makes a signed `.app`. Every example but `multiwindow` and `tray` draws on the Simulator. Unlike every other target, iOS needs cgo (the Go linker has to link UIKit with Xcode's clang): the library stays cgo-free, and the cgo is in the `internal/platform/ios` files that end in `_ios.go`.
 
 **What is new in 1.13.** macOS.
-- **macOS** (the "macOS" section below): AppKit and Metal through purego, no cgo, on Apple silicon and Intel, from macOS 12: windows and several windows, the mouse, trackpad and tablets, the keyboard and input methods, the pasteboard, menus, drag and drop, the tray, notifications, file dialogs, VoiceOver, gamepads, audio, the `gpu` package and the 3D view on Metal, and `glutter-macos`, which makes a signed `.app`. Every example draws on a Mac.
+- **macOS** (the "macOS" section below): AppKit and Metal through purego, no cgo, on Apple silicon and Intel, from macOS 13: windows and several windows, the mouse, trackpad and tablets, the keyboard and input methods, the pasteboard, menus, drag and drop, the tray, notifications, file dialogs, VoiceOver, gamepads, audio, the `gpu` package and the 3D view on Metal, and `glutter-macos`, which makes a signed `.app`. Every example draws on a Mac.
 
 **What is new in 1.12.** Linux without a GPU.
 - **The `soft` renderer on Linux.** `GLUTTER_RENDERER=soft` draws the app on the CPU into the window's shared memory (`wl_shm` on Wayland, MIT-SHM on X11, `XPutImage` over a remote display or with `GLUTTER_X11_NOSHM=1`) and rasterizes and sends only the rectangles that changed. In a virtual machine whose OpenGL is llvmpipe, OpenGL rasterizes the whole window for every frame.
@@ -452,13 +452,14 @@ Every example builds for `windows/amd64` and `windows/arm64` and runs on Windows
 
 ## macOS
 
-Glutter runs on macOS 12 (Monterey) and later, on Apple silicon and Intel, and it is the same Go program: `GOOS=darwin CGO_ENABLED=0 go build` makes a Mach-O file with no `.dylib` next to it. AppKit, Foundation, Core Foundation, Core Graphics, Core Text, QuartzCore, IOSurface, IOKit, Core Audio and Metal are called through purego and its `objc` package (no cgo, no Objective-C, no Xcode), frames are drawn with Metal (the same shaders as the other targets, compiled to Metal Shading Language by naga when Glutter is built) and fall back to the software renderer drawn into IOSurfaces.
+Glutter runs on macOS 13 (Ventura) and later, on Apple silicon and Intel, and it is the same Go program: `GOOS=darwin CGO_ENABLED=0 go build` makes a Mach-O file with no `.dylib` next to it. AppKit, Foundation, Core Foundation, Core Graphics, Core Text, QuartzCore, IOSurface, IOKit, Core Audio and Metal are called through purego and its `objc` package (no cgo, no Objective-C, no Xcode), frames are drawn with Metal (the same shaders as the other targets, compiled to Metal Shading Language by naga when Glutter is built) and fall back to the software renderer drawn into IOSurfaces.
 
 **What to install:** Go 1.27, and nothing else, to build and run: `go run ./examples/counter` works on a Mac as it does on Linux. To make an app bundle, signed, you need the `codesign` that every Mac has; the Command Line Tools are enough, Xcode is not needed. To work on Glutter itself, `naga` 30.0.1 (`cargo install naga-cli --version 30.0.1`) makes the shaders again, and a clone of the repository runs the macOS checks of `docs/IMPLEMENTATION.md`.
 
 ```sh
 go run ./cmd/glutter-macos build -o Gallery.app ./examples/gallery            # a signed bundle, with its plist and icon
 go run ./cmd/glutter-macos build -universal -o App.app ./your/app    # one executable for arm64 and amd64
+CGO_ENABLED=1 go run ./cmd/glutter-macos build -min-macos 14.0 -sign "Apple Development: You" ./your/app   # cgo, a later minimum, an identity
 go run ./cmd/glutter-macos run ./examples/gallery                             # builds the bundle, starts it, shows its log
 go run ./cmd/glutter-macos shot -bundle -o gallery.png ./examples/gallery     # the frame the app draws, with no screen recording
 scripts/perf-macos.sh -m                                                      # size, start, CPU, frames, memory
