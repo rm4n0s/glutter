@@ -8,6 +8,8 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/desktop"
+	"github.com/rm4n0s/glutter/foundation"
+	"github.com/rm4n0s/glutter/internal/testhost"
 	"github.com/rm4n0s/glutter/ui"
 	"github.com/rm4n0s/glutter/widgets"
 )
@@ -45,6 +47,47 @@ func TestFakeDesktopTray(t *testing.T) {
 	fd.ClickTrayMenuItem("Quit")
 	if want := []string{"doit", "activate", "quit"}; !reflect.DeepEqual(calls, want) {
 		t.Errorf("calls = %v, want %v", calls, want)
+	}
+}
+
+// TestFakeDesktopTrayOnEveryTargetPlatform shows that the fake desktop replaces the desktop of every
+// platform, not only Linux's D-Bus: a test may run as macOS or Windows and still see the tray (mardp's
+// issue of 1.17.7 took the fake for the Linux tray and pinned its tests to Linux).
+func TestFakeDesktopTrayOnEveryTargetPlatform(t *testing.T) {
+	for _, p := range []foundation.TargetPlatform{foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows} {
+		t.Run(p.String(), func(t *testing.T) {
+			ts := New(t)
+			// After New, which pins Linux on an Apple host when the test chose nothing.
+			if foundation.DebugMode {
+				foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(p))
+				t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+			} else {
+				testhost.SetPlatform(int32(p))
+				t.Cleanup(func() { testhost.SetPlatform(0) })
+			}
+			if got := foundation.DefaultTargetPlatform(); got != p {
+				t.Fatalf("the test runs as %v, want %v", got, p)
+			}
+			fd := ts.FakeDesktop()
+			var calls []string
+			ts.PumpWidget(trayApp(desktop.SystemTrayOpts{
+				Title:      "Tray on " + p.String(),
+				OnActivate: func() { calls = append(calls, "activate") },
+				Menu:       []desktop.TrayMenuEntry{desktop.NewTrayMenuItem("Show", func() { calls = append(calls, "show") })},
+			}))
+			fd.WaitFor("the tray", fd.TrayRegistered)
+			if got := fd.TrayMenu(); !reflect.DeepEqual(got, []string{"Show"}) {
+				t.Errorf("menu = %q, want [Show]", got)
+			}
+			if got := fd.TrayProperty("Title"); got != "Tray on "+p.String() {
+				t.Errorf("Title = %v", got)
+			}
+			fd.ClickTrayMenuItem("Show")
+			fd.ActivateTray()
+			if want := []string{"show", "activate"}; !reflect.DeepEqual(calls, want) {
+				t.Errorf("calls = %v, want %v", calls, want)
+			}
+		})
 	}
 }
 

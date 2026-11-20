@@ -44,6 +44,12 @@ type FakeNotification struct {
 // chooser portal, on an in-process bus. The code of the app runs as it does for real;
 // the test looks at what it sent and answers the way the user would.
 //
+// The fake replaces the desktop of every platform, whatever the target platform of the
+// test (foundation.DefaultTargetPlatform) and whatever the host: package desktop then
+// talks to the fake's bus and never to the desktop of macOS, Windows, the web, Android or
+// iOS. Its bus speaks Linux's protocols (D-Bus, StatusNotifierItem), but the calls of the
+// app are the same on every platform, so a test of an app's tray need not run as Linux.
+//
 // Flutter: no counterpart
 type FakeDesktop struct {
 	t   *Tester
@@ -70,8 +76,9 @@ const (
 // fileChooserMethods are the methods of the file chooser portal that package desktop calls.
 var fileChooserMethods = []string{"OpenFile", "SaveFile", "SaveFiles"}
 
-// FakeDesktop installs a fake desktop in the app and returns it. Call it before the
-// app first uses package desktop (before the SystemTray is pumped).
+// FakeDesktop installs a fake desktop in the app and returns it, in place of the
+// desktop of every platform (desktop.InstallBus). Call it before the app first uses
+// package desktop (before the SystemTray is pumped).
 //
 // Flutter: no counterpart
 func (t *Tester) FakeDesktop() *FakeDesktop {
