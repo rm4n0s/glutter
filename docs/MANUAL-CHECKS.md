@@ -1284,3 +1284,20 @@ Answers:
 - Mac (step 53.1): _(not yet recorded)_
 - Fishball: _(not yet recorded)_
 - Windows PC: _(not yet recorded)_
+
+## 54.3 A window activated with the token of another process
+
+Step 54.3 (Glutter 1.17.10) lets an app activate its window with an activation token that another process got from the desktop: `ui.WindowAction{Kind: ui.WindowActionActivate, Token: t}`. Theatro's second instance hands the token it was started with (`XDG_ACTIVATION_TOKEN` on Wayland, `DESKTOP_STARTUP_ID` on X11) to the running Theatro, which used to activate with a token of its own, with no recent input of the user behind it, so GNOME and KDE could refuse the focus. On the Linux machine: the fake compositor shows that the window uses the token it is given and asks for none of its own; the headless sway takes the token of another client for the window (it marks the window urgent: it has no input device, so it gives no token the focus); the X11 test's window manager, which prevents focus stealing, refuses the request without a token (time 0) and focuses the window for the one with a startup id, whose `_NET_STARTUP_ID` it reads. Windows, macOS, the web, Android and iOS have no such token and ignore it. What only a real desktop shows (from the module root, with Glutter 1.17.10 in Theatro):
+
+**On GNOME (Wayland) and KDE Plasma (Wayland)**
+
+1. Start Theatro from the launcher (or the dock), click another app's window so that it has the focus, then open a file with Theatro from the file manager (a second Theatro starts and hands it over). The running Theatro's window comes to the front with the focus; before 1.17.10, GNOME showed "Theatro is ready" and KDE made its task bar entry flash. When it does not, send the value of `XDG_ACTIVATION_TOKEN` that the second instance saw (empty or not) and the name and version of the desktop.
+
+**On an X11 session (GNOME on Xorg, Xfce)**
+
+2. The same as check 1. The window comes to the front with the focus. When it does not, send `xprop _NET_STARTUP_ID` of the Theatro window and the `DESKTOP_STARTUP_ID` the second instance saw.
+
+Answers:
+- Theatro on GNOME: _(not yet recorded)_
+- Theatro on KDE: _(not yet recorded)_
+- Theatro on X11: _(not yet recorded)_

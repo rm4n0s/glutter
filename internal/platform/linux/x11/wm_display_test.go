@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/platform"
@@ -90,6 +91,19 @@ type testWM struct {
 	menus       [][5]int64
 	activations int
 	withdrawals int
+	// userTime, when it is not 0, is the X server time of the user's last action: the
+	// manager prevents focus stealing and refuses the focus to an activation request of
+	// an older time (EWMH, _NET_ACTIVE_WINDOW). activationLog are the requests, with the
+	// _NET_STARTUP_ID that the window had when each came.
+	userTime      uint64
+	activationLog []wmActivation
+}
+
+// wmActivation is an activation request that the test window manager got.
+type wmActivation struct {
+	time      uint64
+	startupID string
+	focused   bool
 }
 
 func startTestWM(t *testing.T, p *Platform) *testWM {
@@ -248,6 +262,23 @@ func (wm *testWM) readLongs(window, property uint64) []uint64 {
 	return out
 }
 
+// readString reads a property of format 8 of a window on the connection of the manager;
+// empty when the window has none.
+func (wm *testWM) readString(window, property uint64) string {
+	mem := dl.Calloc(1, 8+4+8+8+8)
+	defer dl.Free(mem)
+	actualType, actualFormat, nitems, bytesAfter, prop := mem, mem+8, mem+16, mem+24, mem+32
+	status := wm.x.getWindowProperty(wm.display, window, property, 0, 1024, 0, anyPropertyType, actualType, actualFormat, nitems, bytesAfter, prop)
+	data := *view[uintptr](prop)
+	if data != 0 {
+		defer wm.x.free(data)
+	}
+	if status != 0 || data == 0 || *view[int32](actualFormat) != 8 {
+		return ""
+	}
+	return string(unsafe.Slice(view[byte](data), *view[uint64](nitems)))
+}
+
 // bigState is whether the window is maximized or fullscreen.
 func (wm *testWM) bigState(window uint64) bool {
 	s := wm.states[window]
@@ -317,10 +348,15 @@ func (wm *testWM) onMessage(m *xClientMessageEvent) {
 			wm.unmapWindow(wm.display, m.window)
 		}
 	case wm.atom("_NET_ACTIVE_WINDOW"):
+		a := wmActivation{time: uint64(uint32(m.data[1])), startupID: wm.readString(m.window, wm.atom("_NET_STARTUP_ID"))}
 		wm.mu.Lock()
 		wm.activations++
+		a.focused = wm.userTime == 0 || a.time >= wm.userTime
+		wm.activationLog = append(wm.activationLog, a)
 		wm.mu.Unlock()
-		wm.setFocus(wm.display, m.window, 2 /* RevertToParent */, 0)
+		if a.focused {
+			wm.setFocus(wm.display, m.window, 2 /* RevertToParent */, 0)
+		}
 	case wm.atom("_NET_WM_MOVERESIZE"):
 		wm.mu.Lock()
 		wm.moveResizes = append(wm.moveResizes, m.data)
@@ -464,6 +500,35 @@ func TestDisplayActivatedFollowsTheFocus(t *testing.T) {
 	wm.mu.Unlock()
 	if n != 1 {
 		t.Errorf("the window manager got %d activation requests, want 1", n)
+	}
+}
+
+// TestDisplayActivatesWithATokenOfAnotherProcess activates a window with the startup id that another
+// process was started with (its DESKTOP_STARTUP_ID), under a window manager that prevents focus stealing
+// (Theatro's issue of 1.17.9). The request without a token has no time and is refused; the one with the
+// token sets _NET_STARTUP_ID and carries the time of the id, the user's action, and gets the focus.
+func TestDisplayActivatesWithATokenOfAnotherProcess(t *testing.T) {
+	e, wm := startWithWM(t, windowConfig())
+	xid := uint64(e.win.NativeSurface().Window)
+	wm.focus(xid)
+	waitFor(t, func() bool { return e.h.lastInfo().Activated }, "the window did not become active")
+	wm.unfocus()
+	waitFor(t, func() bool { return !e.h.lastInfo().Activated }, "the window did not become inactive")
+	wm.mu.Lock()
+	wm.userTime = 5000 // the user used another window at 5000
+	wm.mu.Unlock()
+
+	e.onLoop(func() { e.win.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate}) })
+	waitFor(t, func() bool { wm.mu.Lock(); defer wm.mu.Unlock(); return len(wm.activationLog) == 1 }, "no activation request came")
+	const token = "theatro-2-1234-host_TIME6000"
+	e.onLoop(func() { e.win.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate, Token: token}) })
+	waitFor(t, func() bool { return e.h.lastInfo().Activated }, "the request with the token did not give the focus")
+	wm.mu.Lock()
+	log := append([]wmActivation(nil), wm.activationLog...)
+	wm.mu.Unlock()
+	want := []wmActivation{{time: 0, focused: false}, {time: 6000, startupID: token, focused: true}}
+	if !reflect.DeepEqual(log, want) {
+		t.Errorf("activation requests = %+v, want %+v", log, want)
 	}
 }
 

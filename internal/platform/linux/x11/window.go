@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -612,7 +614,7 @@ func (w *window) SetHidden(hidden bool) bool {
 	} else {
 		w.setInitialState(w.restore.maximized, w.restore.fullscreen)
 		p.x.mapWindow(p.display, w.xid)
-		w.sendActivate()
+		w.sendActivate(0)
 	}
 	p.x.flush(p.display)
 	return true
@@ -702,7 +704,13 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 		w.sendState(netWMStateRemove, at.netWMStateFullscreen, 0)
 	case ui.WindowActionActivate:
 		p.x.mapWindow(p.display, w.xid) // brings back a window that was iconified
-		w.sendActivate()
+		if action.Token != "" {
+			// The startup id of another process (its DESKTOP_STARTUP_ID): the window manager
+			// ties the window to that launch, and the time in the id is the user's action
+			// that the request answers (EWMH, startup notification).
+			p.setBytes(w.xid, at.netStartupID, at.utf8String, []byte(action.Token))
+		}
+		w.sendActivate(startupTime(action.Token))
 	case ui.WindowActionClose:
 		w.onClose()
 	case ui.WindowActionMove:
@@ -716,8 +724,9 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 }
 
 // sendActivate asks the window manager to activate the window
-// (_NET_ACTIVE_WINDOW, from an application).
-func (w *window) sendActivate() {
+// (_NET_ACTIVE_WINDOW, from an application), for the user's action at the X server time
+// at; 0 when the time is not known.
+func (w *window) sendActivate(at uint32) {
 	p := w.p
 	mem := dl.Calloc(1, xEventSize)
 	defer dl.Free(mem)
@@ -726,8 +735,22 @@ func (w *window) sendActivate() {
 	ev.window = w.xid
 	ev.messageType = p.atoms.netActiveWindow
 	ev.format = 32
-	ev.data = [5]int64{1 /* from an application */, 0, 0, 0, 0}
+	ev.data = [5]int64{1 /* from an application */, int64(at), 0, 0, 0}
 	p.x.sendEvent(p.display, p.root, 0, substructureNotifyMask|substructureRedirMask, mem)
+}
+
+// startupTime is the X server time in a startup id, the decimal number after its last
+// "_TIME" (the startup notification specification); 0 when it has none.
+func startupTime(id string) uint32 {
+	i := strings.LastIndex(id, "_TIME")
+	if i < 0 {
+		return 0
+	}
+	t, err := strconv.ParseUint(id[i+len("_TIME"):], 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(t)
 }
 
 // SetSizeConstraints sets the smallest and the largest size of the window

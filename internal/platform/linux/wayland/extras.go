@@ -72,14 +72,25 @@ func (p *Platform) RequestActivationToken(view ui.ViewID, done func(token string
 }
 
 // activate asks the compositor to show the window and give it the focus, with a
-// token for it: xdg-shell has no request for it. The compositor decides; it may
-// only mark the window as wanting attention.
-func (w *window) activate() {
+// token: xdg-shell has no request for it. The token is given (one that another process
+// got from the compositor and handed to the app, with the input of the user behind it),
+// or, when it is empty, the window asks for one of its own, which carries only the last
+// input of this app. The compositor decides; it may only mark the window as wanting
+// attention.
+func (w *window) activate(given string) {
 	if w.p.sess.activation == nil || w.hidden {
 		return
 	}
 	if w.remapping {
-		w.activateOnMap = true // a surface that is not on the screen cannot take the focus
+		// A surface that is not on the screen cannot take the focus.
+		w.activateOnMap = true
+		if given != "" {
+			w.activateToken = given
+		}
+		return
+	}
+	if given != "" {
+		w.p.sess.activation.Activate(given, w.surface)
 		return
 	}
 	w.p.RequestActivationToken(w.id, func(token string) {

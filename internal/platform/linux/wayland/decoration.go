@@ -284,9 +284,10 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 		}
 	case ui.WindowActionActivate:
 		// xdg-shell cannot raise a window or take the focus for it; xdg_activation_v1
-		// can, with a token. Without the protocol a window that is minimized comes
-		// back only through the compositor's own shell.
-		w.activate()
+		// can, with a token: the one the app was given (another process's), or one of
+		// its own. Without the protocol a window that is minimized comes back only
+		// through the compositor's own shell.
+		w.activate(action.Token)
 	}
 }
 

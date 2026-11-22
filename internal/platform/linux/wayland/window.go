@@ -123,10 +123,12 @@ type window struct {
 	// it again (a new role and the initial commit) and the configure that answers,
 	// when no buffer may be attached. restore is the state the window had when it was
 	// hidden, asked for again when it is shown; activateOnMap asks for the focus once
-	// it is on the screen again.
+	// it is on the screen again, with activateToken when the app gave a token
+	// (ui.WindowAction.Token).
 	hidden        bool
 	remapping     bool
 	activateOnMap bool
+	activateToken string
 	restore       WindowStates
 	// icon is the icon of the window, set again on a new toplevel.
 	icon ui.WindowIcon
@@ -398,7 +400,7 @@ func (w *window) hide() {
 	if w.configures > 0 && !w.remapping {
 		w.restore = w.states // what the compositor said; before a configure, what was asked for
 	}
-	w.hidden, w.remapping, w.activateOnMap = true, false, false
+	w.hidden, w.remapping, w.activateOnMap, w.activateToken = true, false, false, ""
 	w.dropPointerLock(true) // a window that is not on the screen has no pointer
 	if w.frameInFlight {
 		// The callback of the last frame may never come for a surface that is not on
@@ -635,8 +637,9 @@ func (w *window) onSurfaceConfigure(serial uint32) {
 // frame is on the surface.
 func (w *window) mappedAgain() {
 	if w.activateOnMap {
-		w.activateOnMap = false
-		w.activate()
+		token := w.activateToken
+		w.activateOnMap, w.activateToken = false, ""
+		w.activate(token)
 	}
 }
 

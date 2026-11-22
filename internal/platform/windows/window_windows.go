@@ -970,6 +970,8 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 	case ui.WindowActionFullscreen:
 		w.SetState(platform.WindowStateFullscreen)
 	case ui.WindowActionActivate:
+		// action.Token is ignored: Windows has no activation token (the process that the
+		// user started would call AllowSetForegroundWindow for this one instead).
 		if win32.IsIconic(w.hwnd) {
 			win32.ShowWindow(w.hwnd, win32.SWRestore)
 		}

@@ -35,6 +35,7 @@ type atoms struct {
 	netWMActionMaximizeHorz, netWMActionMaximizeVert              uint64
 	netWMActionFullscreen, netWMActionMinimize                    uint64
 	netWMIcon, netWMMoveResize, gtkShowWindowMenu                 uint64
+	netStartupID                                                  uint64
 }
 
 // Platform is the X11 backend of platform.Platform: Xlib and XInput2 through
@@ -210,6 +211,7 @@ func (p *Platform) internAtoms() atoms {
 		netWMActionMaximizeHorz: intern("_NET_WM_ACTION_MAXIMIZE_HORZ"), netWMActionMaximizeVert: intern("_NET_WM_ACTION_MAXIMIZE_VERT"),
 		netWMActionFullscreen: intern("_NET_WM_ACTION_FULLSCREEN"), netWMActionMinimize: intern("_NET_WM_ACTION_MINIMIZE"),
 		netWMIcon: intern("_NET_WM_ICON"), netWMMoveResize: intern("_NET_WM_MOVERESIZE"), gtkShowWindowMenu: intern("_GTK_SHOW_WINDOW_MENU"),
+		netStartupID: intern("_NET_STARTUP_ID"),
 	}
 }
 

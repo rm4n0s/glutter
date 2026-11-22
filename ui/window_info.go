@@ -221,6 +221,18 @@ type WindowAction struct {
 	// Height is the height of the title bar of WindowActionTitleBarHeight, in
 	// logical pixels.
 	Height float64
+	// Token is the activation token of WindowActionActivate: one that another process
+	// got from the desktop and handed to this app, such as the XDG_ACTIVATION_TOKEN
+	// (Wayland) or DESKTOP_STARTUP_ID (X11) that a second instance of the app was
+	// started with. A compositor that prevents focus stealing gives the focus for a
+	// token with a recent input of the user behind it, which a token of the app's own
+	// has not when the app was not used last. Empty, the window asks for a token of its
+	// own (Wayland) or sends the request without a time (X11). Read the variable before
+	// RunApp, which removes XDG_ACTIVATION_TOKEN from the environment. Windows, macOS,
+	// the web, Android and iOS have no such token and ignore it.
+	//
+	// Deviation: Flutter's RegularWindowController.activate takes no token.
+	Token string
 }
 
 // WindowHost is what the engine implements to carry out the actions of a title

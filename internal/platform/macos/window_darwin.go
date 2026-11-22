@@ -447,6 +447,7 @@ func (w *window) PerformWindowAction(action ui.WindowAction) {
 			w.startMove()
 		}
 	case ui.WindowActionActivate:
+		// action.Token is ignored: AppKit's activation takes no token.
 		if !w.blocked() {
 			w.activate()
 		}

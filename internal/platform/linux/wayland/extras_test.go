@@ -97,6 +97,78 @@ func TestActivationRequests(t *testing.T) {
 	}
 }
 
+// TestActivationWithATokenOfAnotherProcess activates a window with the token that another process got
+// from the compositor and handed to the app (Theatro's issue of 1.17.9: a second instance's
+// XDG_ACTIVATION_TOKEN). The window uses it as it is and asks for no token of its own, which would carry
+// no input of the user.
+func TestActivationWithATokenOfAnotherProcess(t *testing.T) {
+	const given = "token-of-another-process"
+	activate := ui.WindowAction{Kind: ui.WindowActionActivate, Token: given}
+	t.Run("on the screen", func(t *testing.T) {
+		e := startWindows(t, with(activationGlobal), config640())
+		e.waitMapped()
+		e.onLoop(func() { e.p.windows[0].PerformWindowAction(activate) })
+		waitUntil(t, func() bool {
+			return len(e.srv.RequestsWith("xdg_activation_v1.activate token="+given+" surface=true")) == 1
+		}, "the window was not activated with the token it was given")
+		e.onLoop(func() {})
+		if got := e.srv.RequestsWith("xdg_activation_v1.get_activation_token"); len(got) != 0 {
+			t.Errorf("the window asked for a token of its own: %q", got)
+		}
+		if got := e.srv.RequestsWith("xdg_activation_v1.activate"); len(got) != 1 {
+			t.Errorf("activate requests = %q, want one", got)
+		}
+		if err := e.stop(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("shown again", func(t *testing.T) {
+		e := startWindows(t, with(activationGlobal), config640())
+		e.waitMapped()
+		e.onLoop(func() { e.p.windows[0].SetHidden(true) })
+		// What a window controller's Activate does for a hidden window: show it, then activate it.
+		e.onLoop(func() {
+			w := e.p.windows[0]
+			w.SetHidden(false)
+			w.PerformWindowAction(activate)
+			if n := len(e.srv.RequestsWith("xdg_activation_v1.activate")); n != 0 {
+				t.Error("a window that is not on the screen yet asked for the focus")
+			}
+		})
+		waitUntil(t, func() bool {
+			return len(e.srv.RequestsWith("xdg_activation_v1.activate token="+given+" surface=true")) == 1
+		}, "the window shown again was not activated with the token it was given")
+		e.onLoop(func() {})
+		if got := e.srv.RequestsWith("xdg_activation_v1.get_activation_token"); len(got) != 0 {
+			t.Errorf("the window asked for a token of its own: %q", got)
+		}
+		// Hidden again, it forgets the token: the next show asks for one of its own.
+		e.onLoop(func() { e.p.windows[0].SetHidden(true) })
+		e.onLoop(func() { e.p.windows[0].SetHidden(false) })
+		waitUntil(t, func() bool {
+			return len(e.srv.RequestsWith("xdg_activation_v1.activate token=fake-token-1 surface=true")) == 1
+		}, "the second show did not ask for a token of its own")
+		if got := e.srv.RequestsWith("xdg_activation_v1.activate token=" + given); len(got) != 1 {
+			t.Errorf("the given token was used %d times, want once", len(got))
+		}
+		if err := e.stop(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("without the protocol", func(t *testing.T) {
+		e := startWindows(t, fakecomp.Config{}, config640())
+		e.waitMapped()
+		e.onLoop(func() { e.p.windows[0].PerformWindowAction(activate) })
+		e.onLoop(func() {})
+		if got := e.srv.RequestsWith("xdg_activation"); len(got) != 0 {
+			t.Errorf("requests = %q, want none", got)
+		}
+		if err := e.stop(); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestActivationWithoutTheProtocol(t *testing.T) {
 	e := startWindows(t, fakecomp.Config{}, config640())
 	e.waitMapped()

@@ -265,3 +265,21 @@ func TestClearLogsForgetsWhatTheFakePlatformKept(t *testing.T) {
 		t.Errorf("windows = %+v, want only the one of view 8", ws)
 	}
 }
+
+// TestWindowActionsKeepTheActivationToken shows a test of an app what token the app activated its window
+// with (step 54.3: a single-instance app hands the token of its second instance to the running one).
+func TestWindowActionsKeepTheActivationToken(t *testing.T) {
+	ts := New(t, Opts{})
+	ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("main")))
+	view := widgets.ViewOf(ts.Element(ByText("main")))
+	view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate, Token: "token-of-the-second-instance"})
+	view.PerformWindowAction(ui.WindowAction{Kind: ui.WindowActionActivate})
+	got := ts.WindowActions()
+	want := []ui.WindowAction{
+		{Kind: ui.WindowActionActivate, Token: "token-of-the-second-instance"},
+		{Kind: ui.WindowActionActivate},
+	}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("window actions = %+v, want %+v", got, want)
+	}
+}
