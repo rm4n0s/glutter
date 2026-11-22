@@ -1,8 +1,10 @@
 package gluttertest
 
 import (
+	"bytes"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -59,7 +61,50 @@ type FakeDesktop struct {
 	notes      []*FakeNotification
 	lastID     uint32
 	registered []string
-	choosers   []godbus.ObjectPath
+	// choosers are the file dialogs that the app opened, oldest first; pending are the
+	// request paths of those the test has not answered, with the index of each in choosers.
+	choosers []FakeFileChooser
+	pending  []pendingChooser
+}
+
+// pendingChooser is a file dialog that waits for the test's answer.
+type pendingChooser struct {
+	path  godbus.ObjectPath
+	index int
+}
+
+// FakeFileChooser is what the app asked of a file dialog (desktop.OpenFiles, SaveFile or
+// SaveFiles), as the fake desktop's file chooser portal read it from the call.
+//
+// Flutter: no counterpart
+type FakeFileChooser struct {
+	// Method is the method of the portal that the app called: "OpenFile" (desktop.OpenFiles),
+	// "SaveFile" or "SaveFiles".
+	Method string
+	// Title is the title of the dialog; empty for the portal's default.
+	Title string
+	// AcceptLabel is the text of the button that accepts the dialog; empty for the default.
+	AcceptLabel string
+	// Modal is false when the app asked for a dialog that leaves its window usable
+	// (NotModal).
+	Modal bool
+	// Multiple and Directory are the options of OpenFiles: more than one choice, and
+	// folders instead of files.
+	Multiple, Directory bool
+	// Filters are the kinds of file that the dialog offers, in order; CurrentFilter is the
+	// name of the one chosen when it opens, empty without filters.
+	Filters       []desktop.FileFilter
+	CurrentFilter string
+	// CurrentFolder is the folder the dialog opens in; empty when the app gave none.
+	CurrentFolder string
+	// CurrentName and CurrentFile are the name and the path of the file that SaveFile
+	// starts with.
+	CurrentName, CurrentFile string
+	// Names are the names of the files of SaveFiles, in order.
+	Names []string
+	// Answered says that the test answered the dialog (AnswerFileChooser or
+	// CancelFileChooser).
+	Answered bool
 }
 
 const (
@@ -158,10 +203,126 @@ func (f *FakeDesktop) chooser(c fakebus.Call) ([]any, error) {
 	opts, _ := c.Args[2].(map[string]godbus.Variant)
 	token, _ := opts["handle_token"].Value().(string)
 	path := dbus.PortalRequestPath(fakeUnique, token)
+	fc := decodeFileChooser(c)
 	f.mu.Lock()
-	f.choosers = append(f.choosers, path)
+	f.choosers = append(f.choosers, fc)
+	f.pending = append(f.pending, pendingChooser{path: path, index: len(f.choosers) - 1})
 	f.mu.Unlock()
 	return []any{path}, nil
+}
+
+// decodeFileChooser reads the arguments of a call of the file chooser portal:
+// (parent_window, title, options).
+func decodeFileChooser(c fakebus.Call) FakeFileChooser {
+	fc := FakeFileChooser{Method: strings.TrimPrefix(c.Method, chooserIfc+"."), Modal: true}
+	if len(c.Args) < 3 {
+		return fc
+	}
+	fc.Title, _ = c.Args[1].(string)
+	opts, _ := c.Args[2].(map[string]godbus.Variant)
+	for key, v := range opts {
+		switch key {
+		case "accept_label":
+			fc.AcceptLabel, _ = v.Value().(string)
+		case "modal":
+			if modal, ok := v.Value().(bool); ok {
+				fc.Modal = modal
+			}
+		case "multiple":
+			fc.Multiple, _ = v.Value().(bool)
+		case "directory":
+			fc.Directory, _ = v.Value().(bool)
+		case "current_folder":
+			fc.CurrentFolder = portalPath(v.Value())
+		case "current_name":
+			fc.CurrentName, _ = v.Value().(string)
+		case "current_file":
+			fc.CurrentFile = portalPath(v.Value())
+		case "files":
+			if files, ok := v.Value().([][]byte); ok {
+				for _, name := range files {
+					fc.Names = append(fc.Names, portalPath(name))
+				}
+			}
+		case "filters":
+			rv := reflect.ValueOf(v.Value())
+			if rv.Kind() == reflect.Slice {
+				for i := 0; i < rv.Len(); i++ {
+					fc.Filters = append(fc.Filters, portalFilter(rv.Index(i)))
+				}
+			}
+		case "current_filter":
+			fc.CurrentFilter = portalFilter(reflect.ValueOf(v.Value())).Name
+		}
+	}
+	return fc
+}
+
+// portalPath is a path or a name the way the portals take it, bytes with a closing NUL
+// (D-Bus type ay), as a string.
+func portalPath(v any) string {
+	b, _ := v.([]byte)
+	return string(bytes.TrimRight(b, "\x00"))
+}
+
+// portalFilter reads a filter of the portal, (sa(us)): its name and its rules, a glob
+// (0) or a MIME type (1) each. A bus gives a structure as a slice of its fields and a call
+// on the fake bus as the struct that was sent, so both are read by position.
+func portalFilter(v reflect.Value) desktop.FileFilter {
+	var out desktop.FileFilter
+	fields := structFields(v)
+	if len(fields) < 2 {
+		return out
+	}
+	out.Name, _ = fields[0].Interface().(string)
+	rules := fields[1]
+	for rules.Kind() == reflect.Interface {
+		rules = rules.Elem()
+	}
+	if rules.Kind() != reflect.Slice {
+		return out
+	}
+	for i := 0; i < rules.Len(); i++ {
+		rule := structFields(rules.Index(i))
+		if len(rule) < 2 {
+			continue
+		}
+		kind, _ := rule[0].Interface().(uint32)
+		pattern, _ := rule[1].Interface().(string)
+		if kind == 1 {
+			out.MIMETypes = append(out.MIMETypes, pattern)
+		} else {
+			out.Patterns = append(out.Patterns, pattern)
+		}
+	}
+	return out
+}
+
+// structFields are the fields of a D-Bus structure, given as a struct or as a slice of
+// its values.
+func structFields(v reflect.Value) []reflect.Value {
+	for v.Kind() == reflect.Interface || v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	var out []reflect.Value
+	switch v.Kind() {
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			out = append(out, v.Field(i))
+		}
+	case reflect.Slice:
+		for i := 0; i < v.Len(); i++ {
+			f := v.Index(i)
+			for f.Kind() == reflect.Interface && !f.IsNil() {
+				f = f.Elem()
+			}
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // WaitFor pumps the posted functions until cond is true, for what the app does on
@@ -328,19 +489,38 @@ func (f *FakeDesktop) ClickTrayMenuItem(label string) {
 func (f *FakeDesktop) PendingFileChoosers() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return len(f.choosers)
+	return len(f.pending)
+}
+
+// FileChoosers are the file dialogs that the app has opened, oldest first, with what it
+// asked of each (the folder, the filters, the title, ...); the dialogs that the test
+// answered stay in the list, with Answered set.
+//
+// Flutter: no counterpart
+func (f *FakeDesktop) FileChoosers() []FakeFileChooser {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]FakeFileChooser, len(f.choosers))
+	for i, fc := range f.choosers {
+		out[i] = fc
+		out[i].Filters = slices.Clone(fc.Filters)
+		out[i].Names = slices.Clone(fc.Names)
+	}
+	return out
 }
 
 func (f *FakeDesktop) answerChooser(code uint32, results map[string]godbus.Variant) {
 	f.t.tb.Helper()
 	f.mu.Lock()
-	if len(f.choosers) == 0 {
+	if len(f.pending) == 0 {
 		f.mu.Unlock()
 		f.t.tb.Fatalf("no file dialog is open")
 		return
 	}
-	path := f.choosers[0]
-	f.choosers = f.choosers[1:]
+	p := f.pending[0]
+	f.pending = f.pending[1:]
+	f.choosers[p.index].Answered = true
+	path := p.path
 	f.mu.Unlock()
 	f.bus.Emit(&godbus.Signal{Path: path, Name: "org.freedesktop.portal.Request.Response", Body: []any{code, results}})
 	f.t.FlushPosted()

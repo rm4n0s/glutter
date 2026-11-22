@@ -14,6 +14,26 @@ import (
 	"github.com/rm4n0s/glutter/widgets"
 )
 
+// everyTargetPlatform are the target platforms that the tests of the fake desktop run as.
+var everyTargetPlatform = []foundation.TargetPlatform{foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS,
+	foundation.TargetPlatformWindows, foundation.TargetPlatformAndroid, foundation.TargetPlatformIOS}
+
+// runAs makes the test run as the target platform p until it ends. Call it after New, which
+// pins Linux on an Apple host when the test chose nothing.
+func runAs(t *testing.T, p foundation.TargetPlatform) {
+	t.Helper()
+	if foundation.DebugMode {
+		foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(p))
+		t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
+	} else {
+		testhost.SetPlatform(int32(p))
+		t.Cleanup(func() { testhost.SetPlatform(0) })
+	}
+	if got := foundation.DefaultTargetPlatform(); got != p {
+		t.Fatalf("the test runs as %v, want %v", got, p)
+	}
+}
+
 func trayApp(opts desktop.SystemTrayOpts) widgets.Widget {
 	return widgets.NewDirectionality(ui.TextDirectionLTR,
 		desktop.NewSystemTray(ui.WindowIcon{Name: "x"}, widgets.NewText("child"), opts))
@@ -57,17 +77,7 @@ func TestFakeDesktopTrayOnEveryTargetPlatform(t *testing.T) {
 	for _, p := range []foundation.TargetPlatform{foundation.TargetPlatformLinux, foundation.TargetPlatformMacOS, foundation.TargetPlatformWindows} {
 		t.Run(p.String(), func(t *testing.T) {
 			ts := New(t)
-			// After New, which pins Linux on an Apple host when the test chose nothing.
-			if foundation.DebugMode {
-				foundation.SetDebugDefaultTargetPlatformOverride(foundation.Some(p))
-				t.Cleanup(func() { foundation.SetDebugDefaultTargetPlatformOverride(foundation.None[foundation.TargetPlatform]()) })
-			} else {
-				testhost.SetPlatform(int32(p))
-				t.Cleanup(func() { testhost.SetPlatform(0) })
-			}
-			if got := foundation.DefaultTargetPlatform(); got != p {
-				t.Fatalf("the test runs as %v, want %v", got, p)
-			}
+			runAs(t, p)
 			fd := ts.FakeDesktop()
 			var calls []string
 			ts.PumpWidget(trayApp(desktop.SystemTrayOpts{
@@ -319,5 +329,90 @@ func TestFakeDesktopFileChooserWorksUntilItIsDisabled(t *testing.T) {
 	fd.AnswerFileChooser("/d.txt")
 	if res := <-waitResult(fd, results); !reflect.DeepEqual(res.Paths, []string{"/d.txt"}) {
 		t.Errorf("result = %+v", res)
+	}
+}
+
+// TestFakeDesktopFileChooserOptions reads back what the app asked of each file dialog (Theatro's
+// issue of 1.17.9: its add dialog must open in the folder chosen last, which a test could not see).
+func TestFakeDesktopFileChooserOptions(t *testing.T) {
+	images := desktop.FileFilter{Name: "Images", Patterns: []string{"*.png", "*.PNG"}, MIMETypes: []string{"image/png"}}
+	text := desktop.FileFilter{Name: "Text", Patterns: []string{"*.txt"}}
+	tests := []struct {
+		name string
+		call func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error)
+		want FakeFileChooser
+	}{
+		{"OpenFiles without options", func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error) {
+			return desktop.OpenFiles(ctx, bc)
+		}, FakeFileChooser{Method: "OpenFile", Modal: true}},
+		{"OpenFiles with every option", func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error) {
+			return desktop.OpenFiles(ctx, bc, desktop.OpenFilesOpts{Title: "Add pictures", AcceptLabel: "Add",
+				Filters: []desktop.FileFilter{images, text}, Multiple: true, CurrentFolder: "/home/u/Pictures 2", NotModal: true})
+		}, FakeFileChooser{Method: "OpenFile", Title: "Add pictures", AcceptLabel: "Add", Multiple: true,
+			Filters: []desktop.FileFilter{images, text}, CurrentFilter: "Images", CurrentFolder: "/home/u/Pictures 2"}},
+		{"OpenFiles of folders", func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error) {
+			return desktop.OpenFiles(ctx, bc, desktop.OpenFilesOpts{Directory: true, CurrentFolder: "/srv/films",
+				Filters: []desktop.FileFilter{text}})
+		}, FakeFileChooser{Method: "OpenFile", Modal: true, Directory: true, CurrentFolder: "/srv/films"}},
+		{"SaveFile", func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error) {
+			return desktop.SaveFile(ctx, bc, desktop.SaveFileOpts{Title: "Export", Filters: []desktop.FileFilter{text},
+				CurrentName: "list.txt", CurrentFolder: "/tmp/out"})
+		}, FakeFileChooser{Method: "SaveFile", Title: "Export", Modal: true, Filters: []desktop.FileFilter{text},
+			CurrentFilter: "Text", CurrentName: "list.txt", CurrentFolder: "/tmp/out"}},
+		{"SaveFile over a file", func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error) {
+			return desktop.SaveFile(ctx, bc, desktop.SaveFileOpts{CurrentFile: "/tmp/out/old.txt"})
+		}, FakeFileChooser{Method: "SaveFile", Modal: true, CurrentFile: "/tmp/out/old.txt"}},
+		{"SaveFiles", func(ctx context.Context, bc widgets.BuildContext) (desktop.FilesResult, error) {
+			return desktop.SaveFiles(ctx, bc, []string{"a.txt", "b c.txt"}, desktop.SaveFilesOpts{AcceptLabel: "Save all",
+				CurrentFolder: "/tmp/out", NotModal: true})
+		}, FakeFileChooser{Method: "SaveFiles", AcceptLabel: "Save all", CurrentFolder: "/tmp/out", Names: []string{"a.txt", "b c.txt"}}},
+	}
+	for _, p := range everyTargetPlatform {
+		t.Run(p.String(), func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					ts := New(t)
+					runAs(t, p)
+					fd := ts.FakeDesktop()
+					ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("main")))
+					bc := ts.Element(ByText("main"))
+					results := make(chan desktop.FilesResult, 2)
+					open := func() {
+						go func() {
+							res, err := tt.call(context.Background(), bc)
+							if err != nil {
+								t.Error(err)
+							}
+							results <- res
+						}()
+					}
+					open()
+					fd.WaitFor("a dialog", func() bool { return fd.PendingFileChoosers() == 1 })
+					got := fd.FileChoosers()
+					if len(got) != 1 || !reflect.DeepEqual(got[0], tt.want) {
+						t.Fatalf("FileChoosers() = %+v, want [%+v]", got, tt.want)
+					}
+					// The list is a copy: a test that changes it changes nothing in the fake.
+					got[0].Filters = append(got[0].Filters, desktop.FileFilter{Name: "x"})
+					got[0].Names = append(got[0].Names, "x")
+					got[0].Title = "changed"
+
+					fd.AnswerFileChooser("/tmp/out/a.txt")
+					<-waitResult(fd, results)
+					open()
+					fd.WaitFor("a second dialog", func() bool { return fd.PendingFileChoosers() == 1 })
+					fd.CancelFileChooser()
+					if res := <-waitResult(fd, results); !res.Cancelled {
+						t.Errorf("result = %+v, want cancelled", res)
+					}
+					answered := tt.want
+					answered.Answered = true
+					got = fd.FileChoosers()
+					if len(got) != 2 || !reflect.DeepEqual(got[0], answered) || !reflect.DeepEqual(got[1], answered) {
+						t.Errorf("FileChoosers() after the answers = %+v, want two of %+v", got, answered)
+					}
+				})
+			}
+		})
 	}
 }

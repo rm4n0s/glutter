@@ -6450,3 +6450,19 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Release:** **1.17.9** (`v1.17.9` on this step's commit): Fishball's issue of 1.17.6.
 - **Proof:** none (nothing drawn changes). **Manual checks:** MANUAL-CHECKS 52.1 (Fishball's profile, the test on a Windows PC).
 - **Deviations and follow-ups:** SPEC §14.2 ("Cost", "Decided in step 52.1") and §17 (issues that draw nothing); README ("What is new in 1.17": 1.17.9). There are two more costs per child that this step leaves alone (possible follow-ups). A call of `Box.Layout` through the interface boxes `BoxConstraints` into `Constraints` and allocates the variadic `LayoutOpts`: 2 allocations per child for a parent that does not keep them made ahead. In a debug build, `Layout` checks `DebugAssertIsValid` with a closure: 2 more allocations per child. M53 (step 53.1) runs the reproduction on macOS and in the iOS Simulator.
+
+## 54.1 The fake desktop tells a test the options of each file dialog
+
+- **Date:** 2026-11-22
+- **Branch:** fix/step-54.1-fake-file-chooser-options
+- **Summary:** Theatro's issue "The fake desktop does not tell a test the options of a file chooser" (1.17.9) is true. The fake's FileChooser portal answered `OpenFile`, `SaveFile` and `SaveFiles` but kept only the request path, so a test could not check the folder a dialog opens in or its filters. Theatro wrapped `desktop.OpenFiles` in a function of its own to record them. The fake now decodes each call into a `gluttertest.FakeFileChooser`, which `FakeDesktop.FileChoosers()` returns as a copy. It holds the method, title, accept label, `modal` (true when the app sends none, as the portal says), `multiple`, `directory`, the filters and the one chosen first, `current_folder`, `current_name`, `current_file` and the names of `SaveFiles`. The paths are the portal's byte strings without their closing NUL. A dialog stays in the list after the test answers or cancels it, marked `Answered`.
+- **Tests:** `gluttertest.TestFakeDesktopFileChooserOptions` has six cases: OpenFiles without options, with every option, of folders; SaveFile; SaveFile over a file; SaveFiles. Each case runs as Linux, macOS, Windows, Android and iOS as the target platform (30 subtests). It checks that the list is a copy and that a dialog is marked once answered or cancelled.
+  - Linux: ran here and passed, in both modes, with `-race` and with `CGO_ENABLED=0`.
+  - Windows: the same test under Wine (`GOOS=windows go test -exec scripts/wine-exec.sh -p 1 ./gluttertest`, both modes) ran here and passed.
+  - Web: under Node (`scripts/test-wasm.sh`, both modes) ran here and passed.
+  - Android and iOS: not applicable. An app's tests do not run on the phone; the fake runs in the test process of the developer's machine, where each target platform is covered above.
+  - macOS: not written here (the test exists; step 55.1 runs it on the Mac).
+- **Checks:** gofmt ✅ · go vet ✅ · golangci-lint ✅ (also Windows amd64 and arm64, with and without `glutter_wine`) · the race tests of `./...` ✅ (170 packages) and with `-tags debug_mode` ✅ (170) · `CGO_ENABLED=0` build ✅ and tests ✅ (170) · errcheck ✅ (0 violations, 21 accepted; the iOS pass is the Mac's) · apicheck ✅ (0 violations, 61 accepted) · uintptrcheck ✅ (0 violations, 1 accepted) · wasm build and vet ✅ · `scripts/test-wasm.sh` ✅ in both modes (128 packages) · `scripts/check-android.sh` ✅ · Windows amd64 build and vet, arm64 build ✅ · `scripts/test-windows.sh` ✅ in both modes (11 packages).
+- **Release:** none of its own; 1.17.10 is made by step 54.3.
+- **Proof:** none (nothing drawn changes). **Manual checks:** none.
+- **Deviations and follow-ups:** SPEC §17 (the fake desktop, "Decided in step 54.1"); README ("What is new in 1.17": 1.17.10). Theatro can drop its `Deps.openFiles` wrapper of the add dialog once it moves to 1.17.10. M55 (step 55.1) runs the test on macOS.
