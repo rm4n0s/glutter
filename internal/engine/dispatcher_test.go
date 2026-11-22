@@ -551,6 +551,37 @@ func TestTheReasonOfACloseRequestReachesTheApp(t *testing.T) {
 	finish(t, h, done)
 }
 
+// TestAnOpenRequestReachesTheApp is Theatro's issue (step 56.1): what the platform is asked to open reaches
+// the listeners of the app, and a request that came before the app listened waits for it.
+func TestAnOpenRequestReachesTheApp(t *testing.T) {
+	h, r := newDispatcherHarness(t)
+	early := ui.OpenRequest{Files: []string{"/films/a.torrent"}}
+	late := ui.OpenRequest{URLs: []string{"magnet:?xt=urn:btih:1"}}
+	h.c.Inject(fake.OpenRequestEvent{Request: early}) // before Run: the request that started the app
+	done := h.run(t)
+	waitFor(t, func() bool {
+		ready := false
+		onUI(t, h, func() { ready = r.dispatcher() != nil })
+		return ready
+	})
+	var got []ui.OpenRequest
+	onUI(t, h, func() {
+		r.dispatcher().AddOpenRequestListener(func(req ui.OpenRequest) { got = append(got, req) })
+	})
+	h.c.Inject(fake.OpenRequestEvent{Request: late})
+	waitFor(t, func() bool {
+		n := 0
+		onUI(t, h, func() { n = len(got) })
+		return n == 2
+	})
+	onUI(t, h, func() {
+		if want := []ui.OpenRequest{early, late}; !reflect.DeepEqual(got, want) {
+			t.Errorf("the app got %+v, want %+v", got, want)
+		}
+	})
+	finish(t, h, done)
+}
+
 func TestPlatformConfigurationConversion(t *testing.T) {
 	tests := []struct {
 		name string

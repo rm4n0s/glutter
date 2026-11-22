@@ -108,6 +108,8 @@ type Platform struct {
 	lc        lifecycleTracker
 	appHidden bool
 	ending    bool
+	// pendingOpen are the open requests that came while Run had no handler (SPEC §29.8 "Open requests").
+	pendingOpen []ui.OpenRequest
 
 	// ptr is the state machine of the mouse, the trackpad and the pen of every window (mouse.go).
 	ptr *pointerMachine
@@ -255,6 +257,7 @@ func (p *Platform) Run(ctx context.Context, h platform.Handler) error {
 
 	// The windows made before Run report their size, draw their first frame and show themselves.
 	p.Post(p.showNewWindows)
+	p.Post(p.flushOpenRequests)
 	p.installQuitHandler()
 	if ctx.Err() == nil {
 		objcx.WithPool(func() { p.app.Send(sel("run")) })

@@ -4,7 +4,9 @@ package macos
 
 import (
 	"github.com/ebitengine/purego/objc"
+	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/darwin/objcx"
+	"github.com/rm4n0s/glutter/ui"
 )
 
 // registerClasses registers the classes that Go implements, once per process, under names with the
@@ -44,6 +46,14 @@ func (s *system) registerClasses() error {
 					p.guard(p.reopen)
 				}
 				return false
+			}},
+			// A link of a scheme the app handles and a document of its type come here (the Apple events GURL and
+			// odoc), also the ones that started the app; with this method AppKit never calls
+			// application:openFiles:, and the files come as file URLs.
+			{Name: "application:openURLs:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID, urls objc.ID) {
+				if p := platformOf(self); p != nil {
+					p.guard(func() { p.openURLs(urls) })
+				}
 			}},
 			{Name: "applicationDidHide:", Fn: func(self objc.ID, _ objc.SEL, _ objc.ID) {
 				if p := platformOf(self); p != nil {
@@ -178,5 +188,51 @@ func (p *Platform) didFinishLaunching() {
 	p.installQuitHandler() // finishLaunching installed AppKit's own
 	if send[int64](p.app, "activationPolicy") == activationPolicyRegular {
 		p.app.Send(sel("activateIgnoringOtherApps:"), true)
+	}
+}
+
+// openURLs is application:openURLs: (SPEC §29.8 "Open requests"): the NSURLs of the array become one request,
+// the file URLs as paths and the others as they are written.
+//
+// Flutter: shell/platform/darwin/macos/framework/Source/FlutterAppDelegate.mm FlutterAppDelegate application:openURLs:
+func (p *Platform) openURLs(urls objc.ID) {
+	if urls == 0 {
+		return
+	}
+	n := send[uint64](urls, "count")
+	items := make([]openItem, 0, n)
+	for i := range n {
+		u := urls.Send(sel("objectAtIndex:"), i)
+		if u == 0 {
+			continue
+		}
+		if send[bool](u, "isFileURL") {
+			items = append(items, openItem{File: true, Text: nsString(u.Send(sel("path")))})
+			continue
+		}
+		items = append(items, openItem{Text: nsString(u.Send(sel("absoluteString")))})
+	}
+	p.deliverOpenRequest(openRequestOf(items))
+}
+
+// deliverOpenRequest gives the request to the handler of Run; one that comes while there is none (the app
+// made the platform and did not run it yet) waits for Run.
+func (p *Platform) deliverOpenRequest(r ui.OpenRequest) {
+	if r.IsEmpty() {
+		return
+	}
+	if p.handler == nil {
+		p.pendingOpen = append(p.pendingOpen, r)
+		return
+	}
+	platform.OpenRequest(p.handler, r)
+}
+
+// flushOpenRequests gives the handler the requests that waited for Run.
+func (p *Platform) flushOpenRequests() {
+	pending := p.pendingOpen
+	p.pendingOpen = nil
+	for _, r := range pending {
+		p.deliverOpenRequest(r)
 	}
 }

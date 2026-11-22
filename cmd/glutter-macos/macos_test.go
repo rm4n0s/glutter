@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/mactool"
 	"github.com/rm4n0s/glutter/internal/perfstats"
 )
 
@@ -181,6 +183,26 @@ func TestParseBuildFlags(t *testing.T) {
 	bf.usage = envFlags{"=nothing"}
 	if _, err := bf.options("./x"); err == nil {
 		t.Error("a usage string with no key was accepted")
+	}
+	// The schemes and the document types of the plist (step 56.1).
+	bf = buildFlags{}
+	pkg, err = parseWith(newFlagSetForTest(&bf), []string{"-url-scheme", "magnet", "-url-scheme", "x-demo",
+		"-doc-type", "BitTorrent file=torrent", "-doc-type", " Text = .txt, md :Editor", "./x"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o, err = bf.options(pkg); err != nil {
+		t.Fatal(err)
+	}
+	wantTypes := []mactool.DocumentType{{Name: "BitTorrent file", Extensions: []string{"torrent"}},
+		{Name: "Text", Extensions: []string{"txt", "md"}, Role: mactool.RoleEditor}}
+	if !slices.Equal(o.URLSchemes, []string{"magnet", "x-demo"}) || !reflect.DeepEqual(o.DocumentTypes, wantTypes) {
+		t.Errorf("schemes = %q, document types = %+v, want %+v", o.URLSchemes, o.DocumentTypes, wantTypes)
+	}
+	for _, bad := range []string{"torrent", "=torrent", "Torrent=", "Torrent=a,,b", "Torrent=torrent:owner", "  =x"} {
+		bf.docTypes = listFlags{bad}
+		_, err := bf.options("./x")
+		routeIs(t, err, "buildFlags.options.MacOSUsage")
 	}
 	// A command takes exactly one package.
 	if _, err := parseWith(newFlagSetForTest(&buildFlags{}), []string{"./a", "./b"}, io.Discard); err == nil {

@@ -784,6 +784,11 @@ func (h *handler) StartDrag(view ui.ViewID, request ui.DragRequest) error {
 // the action it accepts.
 func (h *handler) OnDrop(event ui.DropEvent) ui.DropActions { return h.disp.DispatchDrop(event) }
 
+// OnOpenRequest hands a request of the system to open URLs or files to the app's
+// listeners (ui.PlatformDispatcher.AddOpenRequestListener), which keeps it until
+// the app listens.
+func (h *handler) OnOpenRequest(request ui.OpenRequest) { h.disp.DispatchOpenRequest(request) }
+
 // OnDragEnd tells the framework how a drag that it started ended.
 func (h *handler) OnDragEnd(result ui.DragResult) { h.disp.DispatchDragEnd(result) }
 

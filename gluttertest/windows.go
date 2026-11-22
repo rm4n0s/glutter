@@ -188,6 +188,18 @@ func (t *Tester) RequestWindowCloseFor(view ui.ViewID, reason ui.AppExitReason) 
 	return t.d.RequestCloseFor(view, reason)
 }
 
+// SendOpenRequest tells the app, as macOS would, that the system asks it to open
+// URLs or files: a click on a link of a scheme the app handles, a double click on a
+// document of its type. The listeners of ui.PlatformDispatcher.AddOpenRequestListener
+// get it; a request sent before the app listens waits for its first listener, as the
+// one that starts an app does.
+//
+// Flutter: no counterpart
+func (t *Tester) SendOpenRequest(request ui.OpenRequest) {
+	t.adopt()
+	t.d.DispatchOpenRequest(request)
+}
+
 // SetViewFocus tells the framework, as the platform would, that the keyboard focus
 // moved into the view (true), or out of it, from the direction (undefined by
 // default).

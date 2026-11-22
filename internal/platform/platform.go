@@ -204,6 +204,31 @@ func CloseRequest(h Handler, view ui.ViewID, reason ui.AppExitReason) bool {
 	return h.OnCloseRequest(view)
 }
 
+// OpenRequestHandler is implemented by a handler that wants the requests of the
+// system to open URLs and files (ui.OpenRequest, SPEC §8.7 "Open requests"): a click
+// on a link of a scheme the app handles, a double click on a document of its type. A
+// platform where they come as events and not as arguments of the program (macOS:
+// application:openURLs:) calls it, also for the ones that started the app.
+// OpenRequest calls it when the handler has it.
+//
+// Flutter: no counterpart
+type OpenRequestHandler interface {
+	// OnOpenRequest reports that the system asks the app to open URLs or files.
+	OnOpenRequest(request ui.OpenRequest)
+}
+
+// OpenRequest gives h a request of the system to open URLs or files, and reports
+// whether h takes such requests (it is an OpenRequestHandler).
+//
+// Flutter: no counterpart
+func OpenRequest(h Handler, request ui.OpenRequest) bool {
+	oh, ok := h.(OpenRequestHandler)
+	if ok {
+		oh.OnOpenRequest(request)
+	}
+	return ok
+}
+
 // KeyboardFocusHandler is implemented by a handler that wants to know which window
 // the keys go to. A platform whose keyboard focus is not the focus of its windows
 // (Wayland: wl_keyboard.enter and leave, against the activated state; a seat may have

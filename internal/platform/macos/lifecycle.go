@@ -93,3 +93,27 @@ func quitReasonOf(code uint32) ui.AppExitReason {
 	}
 	return ui.AppExitReasonQuit
 }
+
+// openItem is one URL of application:openURLs: as Go reads it: the path of a file URL, or the text of any other.
+type openItem struct {
+	// File says that the URL is a file URL, and Text its path.
+	File bool
+	// Text is the path of the file, or the URL as it is written.
+	Text string
+}
+
+// openRequestOf is the request that the items make: the files and the URLs, each in their order. An item
+// without text (a file URL with no path) is left out.
+func openRequestOf(items []openItem) ui.OpenRequest {
+	var r ui.OpenRequest
+	for _, it := range items {
+		switch {
+		case it.Text == "":
+		case it.File:
+			r.Files = append(r.Files, it.Text)
+		default:
+			r.URLs = append(r.URLs, it.Text)
+		}
+	}
+	return r
+}

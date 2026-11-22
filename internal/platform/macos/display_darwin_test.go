@@ -53,6 +53,21 @@ type recorder struct {
 	dropAccept ui.DropActions
 	drops      []ui.DropEvent
 	dragEnds   []ui.DragResult
+	// opens are the requests that OnOpenRequest heard (the recorder is a platform.OpenRequestHandler, as the
+	// engine's handler is).
+	opens []ui.OpenRequest
+}
+
+func (r *recorder) OnOpenRequest(req ui.OpenRequest) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.opens = append(r.opens, req)
+}
+
+func (r *recorder) opensHeard() []ui.OpenRequest {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ui.OpenRequest(nil), r.opens...)
 }
 
 func (r *recorder) OnDrop(ev ui.DropEvent) ui.DropActions {
@@ -207,6 +222,13 @@ type session struct {
 // body uses s.onUI to run what must be on the main thread.
 func runApp(t *testing.T, opts Options, h *recorder, body func(s *session)) {
 	t.Helper()
+	runAppWith(t, opts, h, nil, body)
+}
+
+// runAppWith is runApp with a function that runs on the main thread after the platform is made and before
+// Run is called.
+func runAppWith(t *testing.T, opts Options, h *recorder, beforeRun func(p *Platform), body func(s *session)) {
+	t.Helper()
 	opts.Accessory = true
 	if opts.Getenv == nil {
 		opts.Getenv = linkEnvOf("cv")
@@ -223,6 +245,9 @@ func runApp(t *testing.T, opts Options, h *recorder, body func(s *session)) {
 				t.Error(err)
 			}
 		}()
+		if beforeRun != nil {
+			beforeRun(p)
+		}
 		s := &session{t: t, p: p, h: h, done: make(chan struct{})}
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

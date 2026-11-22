@@ -2166,6 +2166,41 @@ If you build Flutter apps for Windows, this is how a Glutter app becomes an `.ex
   `-app-id` and `-version 1.2.3.4` set the description, the assembly name and the file version that
   Explorer's Properties dialog shows. Without a manifest the program still makes itself per-monitor
   aware when it starts, which is a little later than the manifest does it.
+- **Links and documents.** What `CFBundleURLTypes` and `CFBundleDocumentTypes` are in `macos/Runner/Info.plist` are
+  two flags here: `-url-scheme magnet` (repeatable) makes the app a handler of `magnet:` links, and
+  `-doc-type "BitTorrent file=torrent"` (repeatable; `NAME=ext[,ext...]`, with `:editor` at the end for an app that
+  also writes the files) makes it an app for `.torrent` files. macOS then sends the app what the user clicks: not as
+  arguments of the program, as Linux and Windows do, but as events, also for the link or the file that started the
+  app. Where Flutter needs a plugin (`app_links`) or a route, Glutter has one listener for both:
+  ```go
+  type Home struct{ m.StatefulWidget }
+
+  func (*Home) CreateState() m.State { return &homeState{} }
+
+  type homeState struct {
+      m.StateOf[*Home]
+      opened        []string
+      stopListening func()
+  }
+
+  func (s *homeState) add(what string) { s.SetState(func() { s.opened = append(s.opened, what) }) }
+
+  func (s *homeState) InitState() {
+      d := m.WidgetsBindingOf(s.Context()).PlatformDispatcher()
+      s.stopListening = d.AddOpenRequestListener(func(r ui.OpenRequest) {
+          for _, link := range r.URLs { s.add(link) }   // "magnet:?xt=urn:btih:..."
+          for _, path := range r.Files { s.add(path) }  // "/Users/you/Downloads/a.torrent"
+      })
+      // On Linux and Windows the same things are the arguments of the program: read os.Args[1:] too.
+  }
+  func (s *homeState) Dispose() { s.stopListening() }
+
+  func (s *homeState) Build(m.BuildContext) m.Widget { return m.NewText("opened " + strconv.Itoa(len(s.opened))) }
+  ```
+  A request that comes before the app listens waits for the first listener, so nothing is lost at the start. macOS
+  learns the bundle when it is opened once or the Finder shows it (not from a temporary folder), and which app is the
+  default for a file type that several apps open is the user's choice in the Finder (Get Info, Open with, Change
+  All). In a widget test, `tester.SendOpenRequest(ui.OpenRequest{...})` is the click.
 - **The icon.** `-icon logo.png` takes a square PNG of at least 16 pixels and makes the icon of the
   `.exe` (16, 24, 32, 48, 64, 128 and 256 pixels) that Explorer, the task bar and the title bar show;
   without it the icon is Glutter's. Give a PNG of 256 pixels or more so that the large sizes are

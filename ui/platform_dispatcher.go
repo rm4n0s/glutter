@@ -330,6 +330,8 @@ type PlatformDispatcher struct {
 	semanticsOn     bool
 	// exitReason is the reason of the request to close that is being asked (RequestCloseFor).
 	exitReason AppExitReason
+	// open are the listeners of the system's requests to open URLs and files, and the requests that wait for one.
+	open openRequests
 }
 
 // NewPlatformDispatcher creates a dispatcher with no views. The host is the

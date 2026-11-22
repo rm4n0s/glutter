@@ -59,3 +59,5 @@ go.work.sum
 # The temporary copy of a package that glutter-windows builds (internal/wintool, SPEC §25.1)
 _glutterwin-*/
 .ios-test/
+# The bundles that the macOS tests register with Launch Services (examples/macos_open_test.go, SPEC §29.13)
+.macos-test/

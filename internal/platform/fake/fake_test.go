@@ -54,6 +54,10 @@ func (h *recordingHandler) OnViewFocus(view ui.ViewID, focused bool) {
 	h.add("OnViewFocus %d %v", view, focused)
 }
 func (h *recordingHandler) OnContentLost(view ui.ViewID) { h.add("OnContentLost %d", view) }
+func (h *recordingHandler) OnOpenRequest(r ui.OpenRequest) {
+	h.add("OnOpenRequest %v %v", r.URLs, r.Files)
+}
+
 func (h *recordingHandler) OnCloseRequest(view ui.ViewID) bool {
 	h.add("OnCloseRequest %d", view)
 	return h.allowClose
@@ -213,6 +217,8 @@ func TestInjectDeliversEventsInOrder(t *testing.T) {
 		{"close request", CloseRequestEvent{View: 4}, "OnCloseRequest 4"},
 		{"close request with a reason", CloseRequestEvent{View: 4, Reason: ui.AppExitReasonQuit}, "OnCloseRequest 4"},
 		{"view focus", ViewFocusEvent{View: 5, Focused: true}, "OnViewFocus 5 true"},
+		{"open request", OpenRequestEvent{Request: ui.OpenRequest{URLs: []string{"magnet:?x"}, Files: []string{"/a.torrent"}}},
+			"OnOpenRequest [magnet:?x] [/a.torrent]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

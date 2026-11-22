@@ -1,6 +1,8 @@
 package gluttertest
 
 import (
+	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -281,5 +283,77 @@ func TestWindowActionsKeepTheActivationToken(t *testing.T) {
 	}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("window actions = %+v, want %+v", got, want)
+	}
+}
+
+// openListener listens for open requests from its InitState, as an app does, and shows how many it got.
+type openListener struct {
+	widgets.StatefulWidget
+	got *[]ui.OpenRequest
+}
+
+func newOpenListener(got *[]ui.OpenRequest) *openListener {
+	return &openListener{widgets.NewStatefulWidgetBase(), got}
+}
+
+func (w *openListener) CreateState() widgets.State { return &openListenerState{} }
+
+type openListenerState struct {
+	widgets.StateOf[*openListener]
+	remove func()
+}
+
+func (s *openListenerState) InitState() {
+	d := widgets.WidgetsBindingOf(s.Context()).PlatformDispatcher()
+	s.remove = d.AddOpenRequestListener(func(r ui.OpenRequest) {
+		s.SetState(func() { *s.Widget().got = append(*s.Widget().got, r) })
+	})
+}
+
+func (s *openListenerState) Dispose() {
+	s.remove()
+}
+
+func (s *openListenerState) Build(widgets.BuildContext) widgets.Widget {
+	return widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText(fmt.Sprintf("opened %d", len(*s.Widget().got))))
+}
+
+// TestOpenRequestReachesTheApp is Theatro's issue (step 56.1) in the test process of an app, with each target
+// platform: a request sent before the app is pumped (the one that starts an app) waits for the listener of its
+// first widget; one sent later reaches it and the app shows it; after the widget is gone nothing is called.
+func TestOpenRequestReachesTheApp(t *testing.T) {
+	started := ui.OpenRequest{Files: []string{"/films/A Film.torrent"}}
+	clicked := ui.OpenRequest{URLs: []string{"magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a"}}
+	for _, p := range everyTargetPlatform {
+		t.Run(p.String(), func(t *testing.T) {
+			ts := New(t)
+			runAs(t, p)
+			var got []ui.OpenRequest
+			ts.SendOpenRequest(started)
+			ts.PumpWidget(newOpenListener(&got))
+			ts.Pump(0)
+			if want := []ui.OpenRequest{started}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("after the first frame the app has %+v, want the request that started it: %+v", got, want)
+			}
+			if err := FindsOneWidget(ts, ByText("opened 1")); err != nil {
+				t.Error(err)
+			}
+
+			ts.SendOpenRequest(clicked)
+			ts.Pump(0)
+			if want := []ui.OpenRequest{started, clicked}; !reflect.DeepEqual(got, want) {
+				t.Errorf("the app has %+v, want %+v", got, want)
+			}
+			if err := FindsOneWidget(ts, ByText("opened 2")); err != nil {
+				t.Error(err)
+			}
+
+			ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("gone")))
+			ts.SendOpenRequest(clicked)
+			ts.Pump(0)
+			if len(got) != 2 {
+				t.Errorf("a listener that was removed got a request: %+v", got)
+			}
+		})
 	}
 }

@@ -18,6 +18,7 @@ type buildFlags struct {
 	sign, minMacOS               string
 	universal, hardened, debug   bool
 	usage                        envFlags
+	urlSchemes, docTypes         listFlags
 }
 
 // add registers the flags. keepOut says that the command keeps the bundle, so -o means something.
@@ -33,6 +34,8 @@ func (b *buildFlags) add(fs *flag.FlagSet, keepOut bool) {
 	fs.BoolVar(&b.hardened, "hardened", false, "sign with the hardened runtime and the entitlements of the microphone, as a notarized app needs")
 	fs.BoolVar(&b.debug, "debug", false, "build with -tags debug_mode, not stripped (a release build, stripped with -ldflags=-s -w, otherwise)")
 	fs.Var(&b.usage, "usage", "a usage string for the plist, KEY=text (repeatable), such as NSCameraUsageDescription=...")
+	fs.Var(&b.urlSchemes, "url-scheme", "a URL scheme the app handles, such as magnet (repeatable): a click on such a link reaches the app as a ui.OpenRequest")
+	fs.Var(&b.docTypes, "doc-type", "a type of file the app opens, NAME=ext[,ext...][:viewer|editor], such as \"BitTorrent file=torrent\" (repeatable): a double click on such a file reaches the app as a ui.OpenRequest")
 	fs.StringVar(&b.sign, "sign", "", "the identity to sign with, as codesign takes it (a name in the keychain or a SHA-1); ad hoc (-) by default")
 	fs.StringVar(&b.minMacOS, "min-macos", "", "the oldest macOS the app runs on, such as 14.0: the plist's LSMinimumSystemVersion and the build's MACOSX_DEPLOYMENT_TARGET (default "+mactool.MinSystemVersion+")")
 }
@@ -51,7 +54,55 @@ func (b *buildFlags) options(pkg string) (mactool.BuildOptions, error) {
 		}
 		o.Usage[k] = v
 	}
+	o.URLSchemes = append(o.URLSchemes, b.urlSchemes...)
+	for _, v := range b.docTypes {
+		t, ok := parseDocType(v)
+		if !ok {
+			return o, errors.New(tagMacOSUsage, "-doc-type takes NAME=ext[,ext...][:viewer|editor]", "value", v)
+		}
+		o.DocumentTypes = append(o.DocumentTypes, t)
+	}
 	return o, nil
+}
+
+// listFlags is a flag that may be given several times; the values are kept in their order.
+type listFlags []string
+
+func (l *listFlags) String() string { return strings.Join(*l, " ") }
+
+// Set adds a value.
+func (l *listFlags) Set(v string) error {
+	*l = append(*l, v)
+	return nil
+}
+
+// parseDocType reads the value of -doc-type, NAME=ext[,ext...][:viewer|editor]: "BitTorrent file=torrent",
+// "Text=txt,md:editor". The extensions may have their dot. What the names and the extensions may be is mactool.InfoPlist's
+// to say.
+func parseDocType(v string) (mactool.DocumentType, bool) {
+	name, rest, ok := strings.Cut(v, "=")
+	if !ok || strings.TrimSpace(name) == "" {
+		return mactool.DocumentType{}, false
+	}
+	t := mactool.DocumentType{Name: strings.TrimSpace(name)}
+	exts, role, hasRole := strings.Cut(rest, ":")
+	if hasRole {
+		switch strings.ToLower(strings.TrimSpace(role)) {
+		case "viewer":
+			t.Role = mactool.RoleViewer
+		case "editor":
+			t.Role = mactool.RoleEditor
+		default:
+			return mactool.DocumentType{}, false
+		}
+	}
+	for _, e := range strings.Split(exts, ",") {
+		if e = strings.TrimPrefix(strings.TrimSpace(e), "."); e == "" {
+			return mactool.DocumentType{}, false
+		}
+		t.Extensions = append(t.Extensions, e)
+	}
+	return t, true
 }
 
 // parseWith parses the flags of a command and returns its one package.

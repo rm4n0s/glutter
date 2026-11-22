@@ -205,6 +205,7 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 ```
 
 **What is new in 1.17.** Release builds by default, and the Linux run of 1.13 to 1.16.
+- **New** (1.17.11): on macOS the system's requests to open a link or a file reach the app: `WidgetsBindingOf(bc).PlatformDispatcher().AddOpenRequestListener(func(r ui.OpenRequest) { ... })` gets the URLs of a scheme the app handles (a click on a magnet link) and the paths of the files of its types (a double click in the Finder, a drop on the Dock icon), also the ones that started the app, which macOS never gives as arguments. `glutter-macos build -url-scheme magnet -doc-type "BitTorrent file=torrent"` writes the plist's `CFBundleURLTypes` and `CFBundleDocumentTypes`. A test sends one with `tester.SendOpenRequest`. Found by Theatro.
 - **New** (1.17.10): `ui.WindowAction` has a `Token`: a window activated with the `XDG_ACTIVATION_TOKEN` (Wayland) or `DESKTOP_STARTUP_ID` (X11) of another process, such as the second instance of a single-instance app that hands its work to the running one, gets the focus on a desktop that prevents focus stealing; a token of the app's own carries no recent input of the user. Read the variable before `RunApp`, which removes `XDG_ACTIVATION_TOKEN` from the environment. Found by Theatro.
 - **New** (1.17.10): `gluttertest`'s `FakeDesktop` answers `desktop.OpenURI`: `OpenedURIs()` lists the URIs the app opened, `SetOpenURIAnswer` makes the portal open, cancel or fail, and `DisableOpenURI` takes it away. A test's `OpenURI` no longer falls back to `xdg-open`, which could open the developer's browser. Found by Theatro.
 - **New** (1.17.10): `gluttertest`'s `FakeDesktop.FileChoosers()` tells a test what the app asked of each file dialog: the folder it opens in, the filters, the title, whether it chooses folders or several files, the names to save. Found by Theatro.
@@ -471,6 +472,7 @@ Glutter runs on macOS 13 (Ventura) and later, on Apple silicon and Intel, and it
 go run ./cmd/glutter-macos build -o Gallery.app ./examples/gallery            # a signed bundle, with its plist and icon
 go run ./cmd/glutter-macos build -universal -o App.app ./your/app    # one executable for arm64 and amd64
 CGO_ENABLED=1 go run ./cmd/glutter-macos build -min-macos 14.0 -sign "Apple Development: You" ./your/app   # cgo, a later minimum, an identity
+go run ./cmd/glutter-macos build -url-scheme magnet -doc-type "BitTorrent file=torrent" ./your/app   # the app opens magnet links and .torrent files
 go run ./cmd/glutter-macos run ./examples/gallery                             # builds the bundle, starts it, shows its log
 go run ./cmd/glutter-macos shot -bundle -o gallery.png ./examples/gallery     # the frame the app draws, with no screen recording
 scripts/perf-macos.sh -m                                                      # size, start, CPU, frames, memory

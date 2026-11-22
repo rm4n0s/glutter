@@ -45,6 +45,10 @@ type BuildOptions struct {
 	// MACOSX_DEPLOYMENT_TARGET of the go command, for the cgo code and the external linker. MinSystemVersion when empty;
 	// a version under it fails with MacOSBundleInvalid.
 	MinMacOS string
+	// URLSchemes and DocumentTypes are the URL schemes the app handles and the types of the files it opens (Info.URLSchemes,
+	// Info.DocumentTypes): the system then sends the app the links and the files as open requests (ui.OpenRequest).
+	URLSchemes    []string
+	DocumentTypes []DocumentType
 	// Sign says how to sign the bundle; the zero value signs it ad hoc.
 	Sign SignOptions
 }
@@ -107,7 +111,7 @@ func Build(ctx context.Context, o BuildOptions) (BuildResult, error) {
 		name = DefaultName(o.Package, o.Dir)
 	}
 	info := Info{Executable: name, ID: o.ID, Name: name, Version: o.Version, IconFile: name, Usage: DefaultUsage(name),
-		MinSystemVersion: o.MinMacOS}
+		MinSystemVersion: o.MinMacOS, URLSchemes: o.URLSchemes, DocumentTypes: o.DocumentTypes}
 	if info.ID == "" {
 		info.ID = DefaultID(name)
 	}

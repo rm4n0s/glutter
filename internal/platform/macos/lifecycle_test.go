@@ -1,6 +1,7 @@
 package macos
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/rm4n0s/glutter/ui"
@@ -83,6 +84,26 @@ func TestQuitReasonOf(t *testing.T) {
 	for _, tc := range tests {
 		if got := quitReasonOf(tc.code); got != tc.want {
 			t.Errorf("%s: quitReasonOf(%#x) = %v, want %v", tc.name, tc.code, got, tc.want)
+		}
+	}
+}
+
+func TestOpenRequestOf(t *testing.T) {
+	tests := []struct {
+		name  string
+		items []openItem
+		want  ui.OpenRequest
+	}{
+		{"nothing", nil, ui.OpenRequest{}},
+		{"a link", []openItem{{Text: "magnet:?xt=urn:btih:1"}}, ui.OpenRequest{URLs: []string{"magnet:?xt=urn:btih:1"}}},
+		{"a file", []openItem{{File: true, Text: "/films/a b.torrent"}}, ui.OpenRequest{Files: []string{"/films/a b.torrent"}}},
+		{"both, each in its order", []openItem{{File: true, Text: "/1"}, {Text: "x:1"}, {File: true, Text: "/2"}, {Text: "x:2"}},
+			ui.OpenRequest{URLs: []string{"x:1", "x:2"}, Files: []string{"/1", "/2"}}},
+		{"an item without text is left out", []openItem{{File: true}, {}, {Text: "x:1"}}, ui.OpenRequest{URLs: []string{"x:1"}}},
+	}
+	for _, tc := range tests {
+		if got := openRequestOf(tc.items); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: openRequestOf = %+v, want %+v", tc.name, got, tc.want)
 		}
 	}
 }

@@ -1301,3 +1301,16 @@ Answers:
 - Theatro on GNOME: _(not yet recorded)_
 - Theatro on KDE: _(not yet recorded)_
 - Theatro on X11: _(not yet recorded)_
+
+## 56.1 Links and documents of an app on a Mac
+
+Step 56.1 (Glutter 1.17.11) gives an app on macOS the links and the files that the system asks it to open (`ui.OpenRequest`, `PlatformDispatcher.AddOpenRequestListener`), and `glutter-macos build` writes the URL schemes and the document types into the plist (`-url-scheme`, `-doc-type`). On the Mac, `TestLaunchServicesSendsTheAppItsLinksAndDocuments` (`examples`, `-tags glutter_display`) registers a bundle with Launch Services and opens a document and a link with `open`, and `TestOpenEventsReachTheHandler` (`internal/platform/macos`) sends the two Apple events to the test process. What a script cannot do is the Finder's double click, a browser's question, and the user's choice of the default app. On a Mac:
+
+1. Build the example and open it once, so that macOS learns it:
+   `go run ./cmd/glutter-macos build -o ~/Applications/Open.app -name Open -url-scheme glutter-open -doc-type "Glutter open test=glutteropen" ./examples/dev/macos-open && open ~/Applications/Open.app`. Quit it.
+2. `touch ~/Desktop/a.glutteropen` and double-click the file in the Finder: Open starts and its window lists `file /Users/…/Desktop/a.glutteropen`. Double-click it again while Open runs: a second line, no second app. When not, say what the Finder did.
+3. Drag the file onto Open's icon in the Dock: another `file` line.
+4. In Safari's address bar type `glutter-open://hello?x=1`: Safari asks whether to open the link in Open, and the window lists `url glutter-open://hello?x=1`.
+5. With Theatro built with Glutter 1.17.11 and `-url-scheme magnet -doc-type "BitTorrent file=torrent"`: in the Finder, Get Info of a `.torrent` file, "Open with" Theatro, "Change All"; a double click on a `.torrent` file then adds it to Theatro, and a click on a magnet link in a browser, after the browser's question, does too.
+
+Answers: _(not yet recorded)_

@@ -313,6 +313,20 @@ func (e DisplaysEvent) dispatch(p *Platform, h platform.Handler) {
 	h.OnDisplaysChanged()
 }
 
+// OpenRequestEvent delivers a request of the system to open URLs or files to
+// platform.OpenRequest, as macOS does for a link or a document of the app.
+//
+// Flutter: no counterpart
+type OpenRequestEvent struct {
+	// Request is what the system asks the app to open.
+	Request ui.OpenRequest
+}
+
+func (e OpenRequestEvent) view() ui.ViewID { return ui.ImplicitViewID }
+func (e OpenRequestEvent) dispatch(_ *Platform, h platform.Handler) {
+	platform.OpenRequest(h, e.Request)
+}
+
 // CloseRequestEvent delivers a close request to Handler.OnCloseRequest. When
 // the handler returns true, the fake closes the view's window.
 //

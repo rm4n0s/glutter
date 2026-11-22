@@ -45,7 +45,38 @@ type Info struct {
 	// MinSystemVersion is the oldest macOS that runs the app (LSMinimumSystemVersion), "major.minor" or
 	// "major.minor.patch"; MinSystemVersion (the constant) when empty.
 	MinSystemVersion string
+	// URLSchemes are the URL schemes the app handles ("magnet"; CFBundleURLTypes): a click on such a link starts the app, or
+	// reaches the running one, as a ui.OpenRequest. A scheme is letters, digits, "+", "-" and ".", and starts with a letter.
+	URLSchemes []string
+	// DocumentTypes are the types of the files the app opens (CFBundleDocumentTypes): a double click on such a file, or a drop
+	// on the app's icon, starts the app, or reaches the running one, as a ui.OpenRequest.
+	DocumentTypes []DocumentType
 }
+
+// DocumentType is a type of file that an app opens: one entry of the plist's CFBundleDocumentTypes.
+//
+// Flutter: no counterpart
+type DocumentType struct {
+	// Name is what the Finder calls a file of the type ("BitTorrent file"; CFBundleTypeName).
+	Name string
+	// Extensions are the file extensions of the type, without the dot ("torrent"; CFBundleTypeExtensions): letters, digits,
+	// "_", "+" and "-". "*" alone is every file.
+	Extensions []string
+	// Role is what the app does with the file (CFBundleTypeRole): RoleViewer, also when empty, or RoleEditor.
+	Role string
+}
+
+// The roles of a DocumentType.
+const (
+	// RoleViewer is the role of an app that reads the files of a type; it is also the role of the app for its URL schemes.
+	//
+	// Flutter: no counterpart
+	RoleViewer = "Viewer"
+	// RoleEditor is the role of an app that reads and writes the files of a type.
+	//
+	// Flutter: no counterpart
+	RoleEditor = "Editor"
+)
 
 // DefaultUsage are the usage strings that every bundle has: the system asks for the microphone only when an app records, and
 // shows the string then.
@@ -58,7 +89,43 @@ func DefaultUsage(name string) map[string]string {
 var (
 	idPattern      = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$`)
 	versionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+(\.[0-9]+)?$`)
+	// schemePattern is the scheme of RFC 3986; extensionPattern an extension without its dot, or "*" for every file.
+	schemePattern    = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*$`)
+	extensionPattern = regexp.MustCompile(`^([A-Za-z0-9_+-]+|\*)$`)
 )
+
+// badScheme is the first of the schemes that is not a URL scheme or is there twice (a scheme has no case), and whether there is one.
+func badScheme(schemes []string) (string, bool) {
+	seen := map[string]bool{}
+	for _, s := range schemes {
+		k := strings.ToLower(s)
+		if !schemePattern.MatchString(s) || seen[k] {
+			return s, true
+		}
+		seen[k] = true
+	}
+	return "", false
+}
+
+// badDocumentType says what is wrong with the first of the types that a plist cannot hold, and whether there is one.
+func badDocumentType(types []DocumentType) (DocumentType, string, bool) {
+	for _, t := range types {
+		switch {
+		case strings.TrimSpace(t.Name) == "" || strings.ContainsRune(t.Name, 0):
+			return t, "a document type needs a name", true
+		case len(t.Extensions) == 0:
+			return t, "a document type needs a file extension", true
+		case t.Role != "" && t.Role != RoleViewer && t.Role != RoleEditor:
+			return t, "the role of a document type is " + RoleViewer + " or " + RoleEditor, true
+		}
+		for _, e := range t.Extensions {
+			if !extensionPattern.MatchString(e) {
+				return t, "a file extension is letters, digits, _, + and -, without the dot, or * for every file", true
+			}
+		}
+	}
+	return DocumentType{}, "", false
+}
 
 // versionAtLeast reports whether v is a version of macOS ("14.0", "13.5.1") that is not under floor.
 func versionAtLeast(v, floor string) bool {
@@ -119,6 +186,12 @@ func InfoPlist(i Info) ([]byte, error) {
 		return nil, errors.New(tagMacOSBundleInvalid, "the minimum macOS is a version such as 14.0, not under "+MinSystemVersion,
 			"min", i.MinSystemVersion)
 	}
+	if s, bad := badScheme(i.URLSchemes); bad {
+		return nil, errors.New(tagMacOSBundleInvalid, "a URL scheme is letters, digits, +, - and ., starts with a letter, and is named once", "scheme", s)
+	}
+	if t, why, bad := badDocumentType(i.DocumentTypes); bad {
+		return nil, errors.New(tagMacOSBundleInvalid, why, "name", t.Name, "extensions", strings.Join(t.Extensions, ","), "role", t.Role)
+	}
 	minOS := i.MinSystemVersion
 	if minOS == "" {
 		minOS = MinSystemVersion
@@ -149,6 +222,34 @@ func InfoPlist(i Info) ([]byte, error) {
 	for _, k := range keys {
 		b.str(k, i.Usage[k])
 	}
+	// The schemes are one URL type, named after the bundle; each document type is an entry of its own.
+	if len(i.URLSchemes) > 0 {
+		b.key("CFBundleURLTypes")
+		b.open("array")
+		b.open("dict")
+		b.str("CFBundleTypeRole", RoleViewer)
+		b.str("CFBundleURLName", i.ID)
+		b.strs("CFBundleURLSchemes", i.URLSchemes)
+		b.close("dict")
+		b.close("array")
+	}
+	if len(i.DocumentTypes) > 0 {
+		b.key("CFBundleDocumentTypes")
+		b.open("array")
+		for _, t := range i.DocumentTypes {
+			role := t.Role
+			if role == "" {
+				role = RoleViewer
+			}
+			b.open("dict")
+			b.strs("CFBundleTypeExtensions", t.Extensions)
+			b.str("CFBundleTypeName", t.Name)
+			b.str("CFBundleTypeRole", role)
+			b.str("LSHandlerRank", "Default")
+			b.close("dict")
+		}
+		b.close("array")
+	}
 	b.end()
 	return b.bytes(), nil
 }
@@ -164,8 +265,12 @@ func Entitlements() []byte {
 	return b.bytes()
 }
 
-// plistWriter writes a flat XML property list.
-type plistWriter struct{ buf bytes.Buffer }
+// plistWriter writes an XML property list: the keys of the top dictionary, and arrays and dictionaries inside it (open and
+// close), each level one tab deeper.
+type plistWriter struct {
+	buf   bytes.Buffer
+	depth int
+}
 
 func (w *plistWriter) begin() {
 	w.buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>
@@ -173,31 +278,69 @@ func (w *plistWriter) begin() {
 <plist version="1.0">
 <dict>
 `)
+	w.depth = 1
 }
 
 func (w *plistWriter) end() { w.buf.WriteString("</dict>\n</plist>\n") }
 
 func (w *plistWriter) bytes() []byte { return w.buf.Bytes() }
 
+func (w *plistWriter) indent() {
+	for range w.depth {
+		w.buf.WriteByte('\t')
+	}
+}
+
 func (w *plistWriter) key(k string) {
-	w.buf.WriteString("\t<key>")
+	w.indent()
+	w.buf.WriteString("<key>")
 	w.text(k)
 	w.buf.WriteString("</key>\n")
 }
 
-func (w *plistWriter) str(k, v string) {
-	w.key(k)
-	w.buf.WriteString("\t<string>")
+// value writes a string that is the value of a key or an element of an array.
+func (w *plistWriter) value(v string) {
+	w.indent()
+	w.buf.WriteString("<string>")
 	w.text(v)
 	w.buf.WriteString("</string>\n")
 }
 
+func (w *plistWriter) str(k, v string) {
+	w.key(k)
+	w.value(v)
+}
+
+// strs writes a key whose value is an array of strings.
+func (w *plistWriter) strs(k string, vs []string) {
+	w.key(k)
+	w.open("array")
+	for _, v := range vs {
+		w.value(v)
+	}
+	w.close("array")
+}
+
+// open begins an array or a dictionary (the element's name), and close ends it.
+func (w *plistWriter) open(element string) {
+	w.indent()
+	w.buf.WriteString("<" + element + ">\n")
+	w.depth++
+}
+
+func (w *plistWriter) close(element string) {
+	w.depth--
+	w.indent()
+	w.buf.WriteString("</" + element + ">\n")
+}
+
 func (w *plistWriter) boolean(k string, v bool) {
 	w.key(k)
+	w.indent()
 	if v {
-		w.buf.WriteString("\t<true/>\n")
+		w.buf.WriteString("<true/>\n")
 	} else {
-		w.buf.WriteString("\t<false/>\n")
+		w.buf.WriteString("<false/>\n")
 	}
 }
 

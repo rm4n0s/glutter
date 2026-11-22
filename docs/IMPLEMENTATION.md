@@ -5069,3 +5069,38 @@ This milestone is for the agent on the owner's Mac (Apple silicon; rule 8 has th
 **Tests:** **macOS:** `gluttertest.TestFakeDesktopFileChooserOptions`, `gluttertest.TestFakeDesktopOpenURI`, `desktop.TestInstalledBusStartsNoProgram`, in both modes. The checks "On a Mac" of rule 8.
 **Proof:** none. **Manual checks:** none.
 **Done when:** the default "Done when" with the checks "On a Mac", and the tests pass there. No version unless the library changes.
+
+## M56: Fixes found by Theatro on macOS (1.17.11)
+
+This milestone is for the agent on the owner's Mac. On 2026-11-22 the owner passed on one entry of Theatro's list of Glutter issues, on 1.17.10: "The system's open-URL and open-file events on macOS". It is true: on macOS a click on a link of a scheme an app handles and a double click on a document of its type reach the app as Apple events (`application:openURLs:`), not as arguments; Glutter did not deliver them, and `glutter-macos build` wrote no `CFBundleURLTypes` or `CFBundleDocumentTypes`, so `Theatro.app` could not be the handler of magnet links and `.torrent` files. The event is macOS's: Linux, Windows and the web give the same things as arguments, which an app reads from `os.Args`; Android's intents and iOS's `application:openURL:options:` are not part of this milestone.
+
+### 56.1 The system's requests to open URLs and files, on macOS
+**Goal:** an app hears what the system asks it to open, also what started it: `ui.OpenRequest{URLs, Files}` through `PlatformDispatcher.AddOpenRequestListener`, which keeps the requests that come before the first listener; macOS sends them from `application:openURLs:`; `glutter-macos build -url-scheme s -doc-type "NAME=ext[,ext...][:viewer|editor]"` writes the schemes and the document types into the plist.
+**Why:** Theatro's issue (above). Without the event a link is pasted or dropped on the window; without the plist keys macOS never offers the app.
+**Read:** SPEC §8.7, §29.1, §29.8, §29.13, §12.10; `ui/platform_dispatcher.go`, `internal/platform/platform.go` (`CloseReasonHandler`, the model), `internal/platform/macos/classes_darwin.go`, `internal/mactool/plist.go`, `cmd/glutter-macos/app.go`; Flutter's `FlutterAppDelegate.mm` (`application:openURLs:`).
+**Tasks:**
+1. `ui.OpenRequest`, `PlatformDispatcher.AddOpenRequestListener` and `DispatchOpenRequest` (pending requests go to the first listener; each listener gets a copy).
+2. `platform.OpenRequestHandler` and `platform.OpenRequest`; the engine's handler; the fake's `OpenRequestEvent`; `gluttertest.Tester.SendOpenRequest`.
+3. macOS: `application:openURLs:` in the app delegate (files as paths, the other URLs as written; a request before `Run` waits).
+4. `mactool.Info.URLSchemes` and `DocumentTypes`, `BuildOptions`, the flags `-url-scheme` and `-doc-type`, with their checks.
+5. `examples/dev/macos-open`, which lists what it was asked to open.
+6. SPEC §8.7, §12.10, §29.1, §29.8, §29.13; README; `docs/GUIDE.md`; `docs/MANUAL-CHECKS.md` section 56.1.
+**Tests:** one pattern, `-run 'OpenRequest|OpenEvents|LaunchServices'`. `ui`: the listeners and the pending requests. `internal/platform`: `TestOpenRequestGoesToAHandlerThatTakesIt`. `internal/platform/fake`: the event. `internal/engine`: `TestAnOpenRequestReachesTheApp`. `gluttertest.TestOpenRequestReachesTheApp` (with each target platform). `internal/platform/macos`: `TestOpenRequestOf`. `internal/mactool`: the plist with the keys (read back by `plutil`), what it refuses (route). `cmd/glutter-macos`: the flags (route of a bad `-doc-type`). **Display tests (macOS):** `internal/platform/macos` `TestOpenEventsReachTheHandler` (the real Apple events `GURL` and `odoc`, sent to the test process) and `TestOpenRequestBeforeRunWaitsForTheHandler`; `examples` `TestLaunchServicesSendsTheAppItsLinksAndDocuments` (a bundle registered with Launch Services, a document that starts the app, a link and two documents to the running app, through `open`). **Web:** `scripts/test-wasm.sh` in both modes (the `ui` and `gluttertest` tests under Node). **Linux, Wine:** step 57.1. **Emulator, Simulator, browser tests:** none: the platforms send no request, and they run no test process of an app.
+**Proof:** none. **Manual checks:** `docs/MANUAL-CHECKS.md` section 56.1 (the Finder's double click, the Dock, a browser's link, the default app).
+**Done when:** the default "Done when" with the checks "On a Mac". Release **1.17.11** (`v1.17.11` on the commit of `step-56.1`), and M55 and M56 are published.
+
+## M57: The issue of M56 on the Linux machine
+
+This milestone is for the Linux machine (the owner's rule of 2026-11-15, with the roles turned around: a test is run on the machine that can run it). M56 is published first.
+
+### 57.1 The open requests in the test process on Linux and under Wine
+**Goal:** the tests of step 56.1 that are plain Go pass on Linux and under Wine, where `gluttertest` runs the test process of an app that also ships for macOS.
+**Why:** 56.1 changed `ui`, `internal/platform`, `internal/platform/fake`, `internal/engine` and `gluttertest`; they ran on the Mac and under Node. An app's tests that send an open request (`Tester.SendOpenRequest`) run on the developer's machine, whatever it is. The Linux and Windows platforms send no request (the links and the files are arguments there), so there is no display test and no Wine test of a window.
+**Read:** step 56.1 and its entry in `docs/IMPLEMENTED.md`; SPEC §8.7 ("Open requests").
+**Tasks:**
+1. Run `go test -race -run 'OpenRequest' -v ./ui ./internal/platform ./internal/platform/fake ./internal/engine ./gluttertest`, and again with `-tags debug_mode`; under Wine `GOOS=windows go test -exec "$PWD/scripts/wine-exec.sh" -p 1 -run OpenRequest ./ui ./gluttertest`, in both modes. Nothing is written: the tests exist.
+2. Run the full list of rule 8 (the Linux machine's), which the Mac could not: `scripts/test-windows.sh`, the display tests, the emulator tests that the steps since M54 list.
+3. A failure is a finding: fix it, with a version. Record the result in `docs/IMPLEMENTED.md`.
+**Tests:** as in the tasks.
+**Proof:** none. **Manual checks:** none.
+**Done when:** the default "Done when", and the tests pass there. No version unless the library changes.

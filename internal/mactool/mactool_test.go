@@ -76,6 +76,100 @@ func TestInfoPlist(t *testing.T) {
 	}
 }
 
+// TestInfoPlistNamesTheSchemesAndTheDocumentTypes is Theatro's issue (step 56.1): the plist says which links and
+// which files are the app's, so that macOS sends them to it. plutil reads the file back where there is one.
+func TestInfoPlistNamesTheSchemesAndTheDocumentTypes(t *testing.T) {
+	i := Info{Executable: "theatro", ID: "dev.glutter.theatro", Name: "Theatro", Version: "1.0.0",
+		URLSchemes: []string{"magnet", "x-theatro+v1"},
+		DocumentTypes: []DocumentType{
+			{Name: "BitTorrent file", Extensions: []string{"torrent"}},
+			{Name: "Lists & more", Extensions: []string{"m3u", "m3u8"}, Role: RoleEditor},
+		}}
+	data, err := InfoPlist(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>dev.glutter.theatro</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>magnet</string>
+				<string>x-theatro+v1</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>torrent</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>BitTorrent file</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>m3u</string>
+				<string>m3u8</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>Lists &amp; more</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Default</string>
+		</dict>
+	</array>
+</dict>
+</plist>
+`
+	if got := string(data); !strings.HasSuffix(got, want) {
+		t.Errorf("the plist does not end with the schemes and the document types:\n%s", got)
+	}
+	// A bundle without them has neither key.
+	i.URLSchemes, i.DocumentTypes = nil, nil
+	plain, err := InfoPlist(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := string(plain); strings.Contains(s, "CFBundleURLTypes") || strings.Contains(s, "CFBundleDocumentTypes") {
+		t.Errorf("a bundle without schemes and document types has their keys:\n%s", s)
+	}
+	plutil, err := exec.LookPath("plutil")
+	if err != nil {
+		t.Skip("no plutil: the file is not read back")
+	}
+	file := filepath.Join(t.TempDir(), "Info.plist")
+	if err := os.WriteFile(file, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(plutil, "-lint", file).CombinedOutput(); err != nil {
+		t.Fatalf("plutil -lint: %v\n%s", err, out)
+	}
+	for path, want := range map[string]string{
+		"CFBundleURLTypes.0.CFBundleURLSchemes.1":          "x-theatro+v1",
+		"CFBundleDocumentTypes.0.CFBundleTypeExtensions.0": "torrent",
+		"CFBundleDocumentTypes.1.CFBundleTypeName":         "Lists & more",
+		"CFBundleDocumentTypes.1.CFBundleTypeRole":         "Editor",
+	} {
+		out, err := exec.Command(plutil, "-extract", path, "raw", "-o", "-", file).CombinedOutput()
+		if got := strings.TrimSpace(string(out)); err != nil || got != want {
+			t.Errorf("plutil reads %s = %q (%v), want %q", path, got, err, want)
+		}
+	}
+}
+
 func TestInfoPlistRefusesWhatABundleCannotHave(t *testing.T) {
 	good := Info{Executable: "app", ID: "dev.glutter.app", Name: "App", Version: "1.0.0"}
 	tests := []struct {
@@ -94,6 +188,17 @@ func TestInfoPlistRefusesWhatABundleCannotHave(t *testing.T) {
 		{"a minimum under macOS 13", func(i *Info) { i.MinSystemVersion = "12.7" }},
 		{"a minimum without its minor number", func(i *Info) { i.MinSystemVersion = "14" }},
 		{"a minimum that is not a version", func(i *Info) { i.MinSystemVersion = "fourteen" }},
+		{"a scheme with a colon", func(i *Info) { i.URLSchemes = []string{"magnet:"} }},
+		{"a scheme that starts with a digit", func(i *Info) { i.URLSchemes = []string{"3d"} }},
+		{"an empty scheme", func(i *Info) { i.URLSchemes = []string{"magnet", ""} }},
+		{"a scheme twice", func(i *Info) { i.URLSchemes = []string{"magnet", "Magnet"} }},
+		{"a document type without a name", func(i *Info) { i.DocumentTypes = []DocumentType{{Extensions: []string{"torrent"}}} }},
+		{"a document type without an extension", func(i *Info) { i.DocumentTypes = []DocumentType{{Name: "Torrent"}} }},
+		{"an extension with its dot", func(i *Info) { i.DocumentTypes = []DocumentType{{Name: "Torrent", Extensions: []string{".torrent"}}} }},
+		{"an extension with a slash", func(i *Info) { i.DocumentTypes = []DocumentType{{Name: "Torrent", Extensions: []string{"a/b"}}} }},
+		{"a role macOS has not", func(i *Info) {
+			i.DocumentTypes = []DocumentType{{Name: "Torrent", Extensions: []string{"torrent"}, Role: "Owner"}}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,6 +208,8 @@ func TestInfoPlistRefusesWhatABundleCannotHave(t *testing.T) {
 			routeOf(t, err, "InfoPlist.MacOSBundleInvalid")
 		})
 	}
+	good.URLSchemes = []string{"magnet", "web+x", "a.b-c"}
+	good.DocumentTypes = []DocumentType{{Name: "Any file", Extensions: []string{"*"}, Role: RoleViewer}, {Name: "T", Extensions: []string{"tar_gz", "7z"}}}
 	for _, min := range []string{"", "13.0", "13.0.1", "13.5", "14.0", "26.1"} {
 		good.MinSystemVersion = min
 		if _, err := InfoPlist(good); err != nil {
