@@ -6466,3 +6466,23 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Release:** none of its own; 1.17.10 is made by step 54.3.
 - **Proof:** none (nothing drawn changes). **Manual checks:** none.
 - **Deviations and follow-ups:** SPEC §17 (the fake desktop, "Decided in step 54.1"); README ("What is new in 1.17": 1.17.10). Theatro can drop its `Deps.openFiles` wrapper of the add dialog once it moves to 1.17.10. M55 (step 55.1) runs the test on macOS.
+
+## 54.2 The fake desktop answers OpenURI
+
+- **Date:** 2026-11-22
+- **Branch:** fix/step-54.2-fake-open-uri
+- **Summary:** Theatro's issue "The fake desktop has no OpenURI portal" (1.17.9) is true, and it hid a worse problem. The fake had no `org.freedesktop.portal.OpenURI`. `desktop.InstallBus` replaced the bus but kept the program runner, so a widget test's `desktop.OpenURI` fell back to the real `xdg-open`, which could open a browser on the developer's desktop, and the test could not see the URI. Theatro called `desktop.OpenURI` through a function that its tests replace. Two changes:
+  - `InstallBus` now starts no program: its runner fails with the sentinel `ProgramNotStarted`.
+  - The fake answers `OpenURI.OpenURI` and records the URI. `FakeDesktop.OpenedURIs()` returns the URIs. `FakeDesktop.SetOpenURIAnswer` chooses the answer: `FakeOpenURIAnswerUnspecified` (the default, which opens), `FakeOpenURIAnswerOpens`, `FakeOpenURIAnswerCancelled` (the user closed the app chooser: `OpenURI` returns nil) or `FakeOpenURIAnswerFails` (the portal's code 2). `FakeDesktop.DisableOpenURI()` takes the portal away.
+
+  A failed portal and a missing one both end in `OpenURIUnavailable`, because the fallback starts nothing. Its metadata `portalTag` tells them apart: `OpenURIFailed` when the portal failed, `DBusCallFailed` when there is none.
+- **Tests:** `gluttertest.TestFakeDesktopOpenURI` has five cases: default, opens, cancelled, fails, no portal. Each runs as Linux, macOS, Windows, Android and iOS as the target platform (25 subtests). The failures check the route `OpenURI->call.openURI.OpenURIUnavailable`, `portalTag`, and the cause `ProgramNotStarted`. With no portal, no URI is recorded. `desktop.TestInstalledBusStartsNoProgram` checks the same route, the metadata `uri` and `portalTag`, and the cause's `program` (`xdg-open`). It was not run against the old code, because that would have started the real `xdg-open`.
+  - Linux: ran here and passed, in both modes, with `-race` and with `CGO_ENABLED=0`.
+  - Windows: the same tests under Wine (`GOOS=windows go test -exec scripts/wine-exec.sh -p 1 ./gluttertest ./desktop`, both modes) ran here and passed.
+  - Web: under Node (`scripts/test-wasm.sh`, both modes) ran here and passed.
+  - Android and iOS: not applicable (as in 54.1: the fake runs in the test process).
+  - macOS: not written here (step 55.1 runs the tests on the Mac).
+- **Checks:** on this tree: gofmt ✅ · go vet ✅ (`gluttertest` and `desktop` for Linux, Windows amd64 and wasm) · golangci-lint ✅ (`gluttertest`, `desktop`) · race tests of `gluttertest` and `desktop` ✅ in both modes · `CGO_ENABLED=0` tests ✅ · errcheck ✅ (0 violations, 21 accepted). The whole Definition of done ran on the tree of step 54.3, which holds this step unchanged (its entry has the results).
+- **Release:** none of its own; 1.17.10 is made by step 54.3.
+- **Proof:** none. **Manual checks:** none.
+- **Deviations and follow-ups:** SPEC §17 (the fake desktop, "Decided in step 54.2"); README (1.17.10). Theatro can drop its `homeDeps.openURI` wrapper once it moves to 1.17.10. M55 (step 55.1) runs the tests on macOS.

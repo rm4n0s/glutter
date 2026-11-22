@@ -275,3 +275,26 @@ func TestOpenURIGivesUpWhenThePlatformNeverAnswers(t *testing.T) {
 const (
 	tagProgramFailed = "ProgramFailed"
 )
+
+// TestInstalledBusStartsNoProgram shows that a desktop installed with InstallBus (gluttertest's fake
+// desktop) never starts xdg-open: a URI that its bus does not open fails, on every platform, instead of
+// reaching a browser of the developer's machine (Theatro's issue of 1.17.9).
+func TestInstalledBusStartsNoProgram(t *testing.T) {
+	ts, bc := app(t)
+	desktop.InstallBus(widgets.WidgetsBindingOf(bc), fakebus.New(unique)) // no portal on it
+	err := inGoroutine(t, ts, func() error { return desktop.OpenURI(context.Background(), bc, "https://example.org") })
+	appErr := tagged(t, err, "OpenURIUnavailable")
+	if !appErr.HasRoute("OpenURI->call.openURI.OpenURIUnavailable") {
+		t.Errorf("route = %s", appErr.Route())
+	}
+	if !errors.Is(err, &errors.Error{Tag: "ProgramNotStarted"}) {
+		t.Errorf("the cause is %v, want ProgramNotStarted", appErr.OriginalErr)
+	}
+	if appErr.Metadata["uri"] != "https://example.org" || appErr.Metadata["portalTag"] != "DBusCallFailed" {
+		t.Errorf("metadata = %v", appErr.Metadata)
+	}
+	cause, ok := errors.FromError(appErr.OriginalErr)
+	if !ok || cause.Metadata["program"] != "xdg-open" {
+		t.Errorf("cause = %#v, want the program xdg-open in its metadata", appErr.OriginalErr)
+	}
+}

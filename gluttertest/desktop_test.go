@@ -416,3 +416,77 @@ func TestFakeDesktopFileChooserOptions(t *testing.T) {
 		})
 	}
 }
+
+// TestFakeDesktopOpenURI opens URIs through the fake desktop's OpenURI portal with each of its answers
+// (Theatro's issue of 1.17.9: the fake had no OpenURI portal, so desktop.OpenURI reached xdg-open).
+func TestFakeDesktopOpenURI(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(fd *FakeDesktop)
+		route   string // empty: OpenURI returns nil
+		portal  string // the metadata "portalTag" of the error
+		opened  bool   // the URI is among OpenedURIs
+		program bool   // the cause of the error is ProgramNotStarted
+	}{
+		{"opens by default", func(*FakeDesktop) {}, "", "", true, false},
+		{"opens", func(fd *FakeDesktop) { fd.SetOpenURIAnswer(FakeOpenURIAnswerOpens) }, "", "", true, false},
+		{"the user cancels", func(fd *FakeDesktop) { fd.SetOpenURIAnswer(FakeOpenURIAnswerCancelled) }, "", "", true, false},
+		{"the portal fails", func(fd *FakeDesktop) { fd.SetOpenURIAnswer(FakeOpenURIAnswerFails) },
+			"OpenURI->call.openURI.OpenURIUnavailable", "OpenURIFailed", true, true},
+		{"no portal", func(fd *FakeDesktop) { fd.DisableOpenURI() },
+			"OpenURI->call.openURI.OpenURIUnavailable", "DBusCallFailed", false, true},
+	}
+	for _, p := range everyTargetPlatform {
+		t.Run(p.String(), func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					ts := New(t)
+					runAs(t, p)
+					fd := ts.FakeDesktop()
+					ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("main")))
+					bc := ts.Element(ByText("main"))
+					tt.setup(fd)
+					const uri = "file:///srv/films/A%20Film/"
+					res := make(chan error, 1)
+					go func() { res <- desktop.OpenURI(context.Background(), bc, uri) }()
+					var err error
+					done := false
+					fd.WaitFor("OpenURI", func() bool {
+						select {
+						case err = <-res:
+							done = true
+						default:
+						}
+						return done
+					})
+					if tt.route == "" {
+						if err != nil {
+							t.Fatalf("OpenURI = %v, want nil", err)
+						}
+					} else {
+						appErr, ok := errors.FromError(err)
+						if !ok {
+							t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+						}
+						if !appErr.HasRoute(tt.route) {
+							t.Errorf("route = %s, want %s", appErr.Route(), tt.route)
+						}
+						if appErr.Metadata["portalTag"] != tt.portal || appErr.Metadata["uri"] != uri {
+							t.Errorf("metadata = %v, want the portal's %s", appErr.Metadata, tt.portal)
+						}
+						if got := errors.Is(err, &errors.Error{Tag: "ProgramNotStarted"}); got != tt.program {
+							t.Errorf("the cause is ProgramNotStarted: %v, want %v (%v)", got, tt.program, appErr.OriginalErr)
+						}
+					}
+					var want []string
+					if tt.opened {
+						want = []string{uri}
+					}
+					if got := fd.OpenedURIs(); !reflect.DeepEqual(got, want) {
+						t.Errorf("OpenedURIs() = %q, want %q", got, want)
+					}
+				})
+			}
+		})
+	}
+}

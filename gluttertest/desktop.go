@@ -42,9 +42,10 @@ type FakeNotification struct {
 }
 
 // FakeDesktop is a desktop for the tests of an app that uses package desktop: a
-// notification service, a StatusNotifierWatcher for the system tray, and a file
-// chooser portal, on an in-process bus. The code of the app runs as it does for real;
-// the test looks at what it sent and answers the way the user would.
+// notification service, a StatusNotifierWatcher for the system tray, a file chooser
+// portal and an OpenURI portal, on an in-process bus; it starts no program. The code of
+// the app runs as it does for real; the test looks at what it sent and answers the way the
+// user would.
 //
 // The fake replaces the desktop of every platform, whatever the target platform of the
 // test (foundation.DefaultTargetPlatform) and whatever the host: package desktop then
@@ -65,7 +66,39 @@ type FakeDesktop struct {
 	// request paths of those the test has not answered, with the index of each in choosers.
 	choosers []FakeFileChooser
 	pending  []pendingChooser
+	// uris are the URIs that the app asked the OpenURI portal to open; uriAnswer is how
+	// the portal answers.
+	uris      []string
+	uriAnswer FakeOpenURIAnswer
 }
+
+// FakeOpenURIAnswer is how the fake desktop's OpenURI portal answers desktop.OpenURI
+// (FakeDesktop.SetOpenURIAnswer).
+//
+// Flutter: no counterpart
+type FakeOpenURIAnswer int
+
+const (
+	// FakeOpenURIAnswerUnspecified is the default: the URI opens.
+	//
+	// Flutter: no counterpart
+	FakeOpenURIAnswerUnspecified FakeOpenURIAnswer = iota
+	// FakeOpenURIAnswerOpens opens the URI: desktop.OpenURI returns nil.
+	//
+	// Flutter: no counterpart
+	FakeOpenURIAnswerOpens
+	// FakeOpenURIAnswerCancelled is the user who closes the desktop's app chooser without
+	// choosing: desktop.OpenURI returns nil, as for a URI that opens.
+	//
+	// Flutter: no counterpart
+	FakeOpenURIAnswerCancelled
+	// FakeOpenURIAnswerFails is a portal that could not open the URI: desktop.OpenURI tries
+	// xdg-open, which a fake desktop never starts, and fails with OpenURIUnavailable, whose
+	// metadata "portalTag" is OpenURIFailed.
+	//
+	// Flutter: no counterpart
+	FakeOpenURIAnswerFails
+)
 
 // pendingChooser is a file dialog that waits for the test's answer.
 type pendingChooser struct {
@@ -116,6 +149,7 @@ const (
 	trayMenuPath = godbus.ObjectPath("/MenuBar")
 	trayMenuIfc  = "com.canonical.dbusmenu"
 	chooserIfc   = "org.freedesktop.portal.FileChooser"
+	openURIIfc   = "org.freedesktop.portal.OpenURI"
 )
 
 // fileChooserMethods are the methods of the file chooser portal that package desktop calls.
@@ -147,8 +181,64 @@ func (t *Tester) FakeDesktop() *FakeDesktop {
 	for _, m := range fileChooserMethods {
 		b.Handle(dbus.PortalDest, dbus.PortalPath, chooserIfc+"."+m, f.chooser)
 	}
+	b.Handle(dbus.PortalDest, dbus.PortalPath, openURIIfc+".OpenURI", f.openURI)
 	desktop.InstallBus(t.Binding, b)
 	return f
+}
+
+// openURI answers OpenURI(parent_window, uri, options): it records the URI and sends the
+// Response that the test chose.
+func (f *FakeDesktop) openURI(c fakebus.Call) ([]any, error) {
+	uri, _ := c.Args[1].(string)
+	opts, _ := c.Args[2].(map[string]godbus.Variant)
+	token, _ := opts["handle_token"].Value().(string)
+	path := dbus.PortalRequestPath(fakeUnique, token)
+	f.mu.Lock()
+	f.uris = append(f.uris, uri)
+	answer := f.uriAnswer
+	f.mu.Unlock()
+	var code uint32 // 0 success, 1 cancelled by the user, 2 ended another way
+	switch answer {
+	case FakeOpenURIAnswerCancelled:
+		code = 1
+	case FakeOpenURIAnswerFails:
+		code = 2
+	}
+	// The app subscribed to the Response of the request before it called.
+	f.bus.Emit(&godbus.Signal{Path: path, Name: "org.freedesktop.portal.Request.Response",
+		Body: []any{code, map[string]godbus.Variant{}}})
+	return []any{path}, nil
+}
+
+// OpenedURIs are the URIs that the app asked the desktop to open with desktop.OpenURI,
+// oldest first, whatever the portal answered (SetOpenURIAnswer); a call made after
+// DisableOpenURI is not among them.
+//
+// Flutter: no counterpart
+func (f *FakeDesktop) OpenedURIs() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.uris)
+}
+
+// SetOpenURIAnswer chooses how the OpenURI portal answers the calls of desktop.OpenURI
+// from now on: the URI opens (the default), the user cancels the app chooser, or the portal
+// fails.
+//
+// Flutter: no counterpart
+func (f *FakeDesktop) SetOpenURIAnswer(answer FakeOpenURIAnswer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.uriAnswer = answer
+}
+
+// DisableOpenURI takes the OpenURI portal away, as on a desktop that has none: the calls
+// of desktop.OpenURI fail with OpenURIUnavailable (the fake desktop starts no xdg-open),
+// until the test ends.
+//
+// Flutter: no counterpart
+func (f *FakeDesktop) DisableOpenURI() {
+	f.bus.Unhandle(dbus.PortalDest, dbus.PortalPath, openURIIfc+".OpenURI")
 }
 
 // DisableFileChooser takes the file chooser portal away, as on a desktop that has none:
