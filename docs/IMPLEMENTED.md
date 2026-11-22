@@ -6506,3 +6506,15 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Release:** **1.17.10** (`v1.17.10` on this step's commit): steps 54.1 to 54.3, Theatro's issues of 1.17.9.
 - **Proof:** none (nothing drawn changes). **Manual checks:** MANUAL-CHECKS 54.3 (Theatro on GNOME, KDE and X11).
 - **Deviations and follow-ups:** SPEC §8.3 and §8.11 ("Decided in step 54.3") and §12.10 (`activate()` takes no token; Flutter's `RegularWindowController.activate` has none, `// Deviation:` in `ui/window_info.go`); README (1.17.10). X11 does not end the startup notification of its own launch (no `remove:` message; SPEC §8.3, not done). Once Theatro moves to 1.17.10, it can send its `XDG_ACTIVATION_TOKEN` or `DESKTOP_STARTUP_ID` (read before `RunApp`) in `homeState.request` and pass it to the activation. The token has no form on the Mac, so M55 covers only steps 54.1 and 54.2.
+
+## 55.1 The fake desktop's file dialogs and OpenURI, on macOS
+
+- **Date:** 2026-11-23
+- **Branch:** feat/step-55.1-fake-desktop-macos
+- **Summary:** the tests of steps 54.1 and 54.2 pass in the test process on macOS (darwin/arm64, macOS 27.2, Go 1.27.3), in both modes, on their first run: with a fake desktop `desktop.InstallBus` drops the macOS desktop, so no call reaches NSWorkspace or an open or save panel (no browser and no panel opened on the Mac during the runs). Nothing changes in the library or in the tests.
+- **Main files:** `docs/IMPLEMENTED.md` only.
+- **Tests:** none added. `go test -race -run 'FakeDesktop|InstalledBus' -v ./gluttertest ./desktop` and the same with `-tags debug_mode`: `gluttertest.TestFakeDesktopFileChooserOptions`, `gluttertest.TestFakeDesktopOpenURI` and `desktop.TestInstalledBusStartsNoProgram` pass, with the other `FakeDesktop` tests of the pattern (the tray, the notifications, the file chooser).
+- **Checks (on a Mac):** gofmt ✅ · go vet ✅ · golangci-lint ✅ · `go test -race -timeout 30m ./...` ✅ and with `-tags debug_mode` ✅ · `CGO_ENABLED=0 go build ./...` ✅ · `CGO_ENABLED=0 go test ./...` ✅ · errcheck (`-skip-android`) ✅ · uintptrcheck ✅ · apicheck ✅ · `GOOS=darwin GOARCH=amd64 go build ./...` ✅ · linux/amd64 build and vet ✅ · js/wasm build and vet ✅ · `scripts/test-wasm.sh` ✅ and with `-tags debug_mode` ✅ · windows/amd64 build and vet, windows/arm64 build ✅ · `GOOS=windows golangci-lint run` (amd64 and arm64, with and without `glutter_wine`) ✅ · `scripts/check-ios.sh` ✅ · `scripts/check-android.sh` skipped (no `ANDROID_HOME`). Not run on a Mac: `scripts/test-windows.sh`, the Wine tests, the Linux display tests, the emulator tests (they ran on the Linux machine for M54).
+- **Release:** none: the library did not change. M55 is published with M56 (step 56.1).
+- **Proof:** none. **Manual checks:** none.
+- **Deviations and follow-ups:** none. The token of step 54.3 has no form on macOS, so it is not part of this step.
