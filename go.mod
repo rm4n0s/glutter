@@ -2,6 +2,8 @@ module github.com/rm4n0s/glutter
 
 go 1.27
 
+toolchain go1.27.4
+
 require (
 	github.com/ebitengine/purego v0.11.2
 	github.com/go-text/typesetting v0.3.4

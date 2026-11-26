@@ -273,6 +273,66 @@ func (s *StateOf[W]) Go(fn func(ctx context.Context)) {
 		func() { fn(ctx) })
 }
 
+// GoErr is Go for work that returns an error: it runs fn on a new goroutine with
+// the Lifetime of the state as its context, and then calls done with the error
+// that fn returned (nil when it succeeded) on the UI thread, where done can use
+// SetState and the framework. Both are for the same case: work that makes an
+// *errors.Error, which the app then shows or logs.
+//
+// GoErr hands fn to its goroutine through errors.Async, on the UI thread before
+// the goroutine starts, so that the route of an *errors.Error that fn makes and
+// returns goes on with the function that called GoErr, as if fn had run there
+// (rm4n0s/errors R7, SPEC §12.6, §14.4). Calling errors.Async by hand is not
+// needed. A panic in fn does not become an error: it is recovered and reported as
+// CallbackPanicked, as in Go, and done is not called. A panic in done is
+// recovered and reported the same way, on the UI thread.
+//
+// done is called only while the state is mounted: when the state was disposed
+// before fn returned, done is not called, as the SetState of a Go goroutine is
+// dropped. done may be nil when the error is of no interest. Call GoErr on the UI
+// thread, after InitState began; in debug builds calling it before the state is
+// built panics with the tag StateGoBeforeMount. Inside fn, use SetState to touch
+// the UI; the work that fn produces is assigned to a variable of the caller, and
+// done reads it.
+//
+// Flutter: no counterpart (SPEC §12.6)
+func (s *StateOf[W]) GoErr(fn func(ctx context.Context) error, done func(err error)) {
+	o := s.owner
+	if o == nil {
+		panic(errors.New(tagStateGoBeforeMount,
+			"GoErr was called on a State that has not been built yet; call it from InitState or later",
+			"state", foundation.RuntimeTypeName(s.self)))
+	}
+	o.UIThread.AssertCurrent("State.GoErr")
+	ctx := s.Lifetime()
+	var report foundation.ErrorReporter
+	if o.OnError != nil {
+		report = o.reportFromAnyGoroutine
+	}
+	// Async is called here, on the UI thread, and not in the goroutine: the route of the error goes on with the
+	// function that called GoErr. This is the first function literal of GoErr, so that its name in a route is stable.
+	work := errors.Async(func() error { return fn(ctx) })
+	state := foundation.RuntimeTypeName(s.self)
+	kv := func() []any { return []any{"library", "widgets library", "state", state} }
+	go foundation.Guard(report, foundation.CallbackPanicked, "in a goroutine started by State.GoErr of "+state, kv, func() {
+		err := work()
+		if done == nil {
+			return
+		}
+		deliver := func() {
+			if s.element == nil {
+				return
+			}
+			foundation.Guard(report, foundation.CallbackPanicked, "in the callback of State.GoErr of "+state, kv, func() { done(err) })
+		}
+		if o.Post != nil && !o.UIThread.IsCurrent() {
+			o.Post(deliver)
+			return
+		}
+		deliver()
+	})
+}
+
 // ToStringShort describes the state by its type and short hash.
 func (s *StateOf[W]) ToStringShort() string { return foundation.DescribeIdentity(s.self) }
 

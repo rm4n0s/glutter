@@ -155,6 +155,120 @@ func TestStateGoReportsUntaggedPanicsAsCallbackPanicked(t *testing.T) {
 	_ = requireErrorTag(t, tr.errs[0], foundation.CallbackPanicked)
 }
 
+// goErrJob is the function of the tests of GoErr that a state calls: the route of its error must go on with it.
+type goErrJob struct {
+	run  func(ctx context.Context) error
+	done func(err error)
+}
+
+func (j *goErrJob) start(s *goerState) { s.GoErr(j.run, j.done) }
+
+// failingWork makes the error of the tests of GoErr, one function below the one that GoErr runs.
+func failingWork() error { return errors.New(tagGoErrWorkFailed, "the work failed") }
+
+func startGoErr(tr *tree, j *goErrJob) {
+	tr.pump(&goer{StatefulWidget: NewStatefulWidgetBase(), start: j.start})
+}
+
+func TestStateGoErrCarriesTheRouteAcrossTheGoroutine(t *testing.T) {
+	tr, q := newThreadedTree(t)
+	ui := foundation.NewUIThread()
+	tr.owner.UIThread = ui
+	var got error
+	called := 0
+	onUI := false
+	j := &goErrJob{
+		run: func(context.Context) error { return failingWork() },
+		done: func(err error) {
+			called++
+			onUI = ui.IsCurrent()
+			got = err
+		},
+	}
+	startGoErr(tr, j)
+	q.waitFor(t, func() bool { return called > 0 })
+	if called != 1 || !onUI {
+		t.Errorf("done ran %d times, on the UI thread: %v; want once, on the UI thread", called, onUI)
+	}
+	appErr := requireErrorTag(t, got, tagGoErrWorkFailed)
+	t.Log(appErr.Route())
+	if !appErr.HasRoute("goErrJob.start->StateOf[...].GoErr->StateOf[...].GoErr.func1->TestStateGoErrCarriesTheRouteAcrossTheGoroutine.func1->failingWork." + tagGoErrWorkFailed) {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
+func TestStateGoErrWithANilError(t *testing.T) {
+	tr, q := newThreadedTree(t)
+	var got error = errors.New(tagGoErrWorkFailed, "unset")
+	called := false
+	startGoErr(tr, &goErrJob{
+		run:  func(context.Context) error { return nil },
+		done: func(err error) { called, got = true, err },
+	})
+	q.waitFor(t, func() bool { return called })
+	if got != nil {
+		t.Errorf("done got %v, want nil", got)
+	}
+}
+
+func TestStateGoErrIsDroppedAfterDispose(t *testing.T) {
+	tr, q := newThreadedTree(t)
+	release := make(chan struct{})
+	finished := make(chan struct{})
+	var ctxDone <-chan struct{}
+	startGoErr(tr, &goErrJob{
+		run: func(ctx context.Context) error {
+			ctxDone = ctx.Done()
+			<-release
+			defer close(finished)
+			return failingWork()
+		},
+		done: func(error) { t.Error("done was called after the state was disposed") },
+	})
+	tr.pump(newMulti())
+	close(release)
+	<-finished
+	// The goroutine posts done to the UI thread; the post is dropped for a state that is gone, not run.
+	q.waitFor(t, func() bool { return q.len() > 0 })
+	q.drain()
+	select {
+	case <-ctxDone:
+	default:
+		t.Error("the context of State.GoErr was not cancelled when the state was disposed")
+	}
+}
+
+func TestStateGoErrPanicInTheWork(t *testing.T) {
+	tr, q := newThreadedTree(t)
+	tr.collectPanics = true
+	startGoErr(tr, &goErrJob{
+		run:  func(context.Context) error { panic("plain") },
+		done: func(error) { t.Error("done was called after a panic in the work") },
+	})
+	q.waitFor(t, func() bool { return len(tr.errs) > 0 })
+	appErr := requireErrorTag(t, tr.errs[0], foundation.CallbackPanicked)
+	if appErr.Tag != foundation.CallbackPanicked {
+		t.Errorf("tag = %s, want %s: a panic is not turned into an error of the work", appErr.Tag, foundation.CallbackPanicked)
+	}
+}
+
+func TestStateGoErrPanicInTheCallback(t *testing.T) {
+	tr, q := newThreadedTree(t)
+	tr.collectPanics = true
+	startGoErr(tr, &goErrJob{
+		run:  func(context.Context) error { return nil },
+		done: func(error) { panic("plain") },
+	})
+	q.waitFor(t, func() bool { return len(tr.errs) > 0 })
+	_ = requireErrorTag(t, tr.errs[0], foundation.CallbackPanicked)
+}
+
+func TestStateGoErrBeforeMount(t *testing.T) {
+	skipUnlessDebug(t)
+	s := &builderState{}
+	requireTag(t, "StateGoBeforeMount", func() { s.GoErr(func(context.Context) error { return nil }, nil) })
+}
+
 func TestStateGoBeforeMount(t *testing.T) {
 	skipUnlessDebug(t)
 	s := &builderState{}
@@ -179,4 +293,5 @@ func TestWrongThread(t *testing.T) {
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
 	tagGoroutineFailed = "GoroutineFailed"
+	tagGoErrWorkFailed = "GoErrWorkFailed"
 )

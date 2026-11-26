@@ -469,9 +469,46 @@ error that the future makes and returns goes on with the build that made the `Fu
 as if the future had run there: Glutter hands the future to its goroutine through
 `errors.Async` (rule R7 of the library's guide), as it does for its own goroutines (an image,
 an SVG, the tray, a clipboard read). A test that matches the end of the route passes either
-way. A goroutine that you start yourself, with `State.Go` or a `go` statement, has a stack of
-its own: call `errors.Async` before you start it, and run what it returns in the goroutine,
-when its error goes back to the UI thread.
+way. A goroutine that you start yourself has a stack of its own, and the route of the error it
+makes would begin at the goroutine. For work that a `State` starts, use `State.GoErr`: it takes
+the work, which returns an error, and a function that gets the error on the UI thread, and it
+calls `errors.Async` for you, so the route goes on with the method that called `GoErr`:
+
+```go
+type Editor struct{ m.StatefulWidget }
+
+type editorState struct {
+	m.StateOf[*Editor]
+	doc     string
+	saveErr error
+}
+
+func store(ctx context.Context, doc string) (string, error) { return doc, ctx.Err() }
+
+func (s *editorState) save() {
+	var saved string
+	s.GoErr(func(ctx context.Context) error {
+		var err error
+		saved, err = store(ctx, s.doc) // an *errors.Error that this returns has the route of save
+		return err
+	}, func(err error) { // on the UI thread, and only while the state is mounted
+		s.SetState(func() {
+			if err == nil {
+				s.doc = saved
+			}
+			s.saveErr = err // show it, or log it with slog as "err"
+		})
+	})
+}
+```
+
+The route of the error reads
+`editorState.save->StateOf[...].GoErr->StateOf[...].GoErr.func1->editorState.save.func1->...->Tag`:
+`GoErr` and its function literal are what `Async` leaves between the caller and your work. A panic in
+the work or in the function is recovered and reported as `CallbackPanicked`, like a panic in
+`State.Go`; the function is not called after the state is disposed. For a goroutine that no
+`State` starts (a `go` statement, a worker of your own), call `errors.Async` before you start
+it, and run what it returns in the goroutine, when its error goes back to the UI thread.
 
 ## 9. Text input and forms
 
@@ -2400,7 +2437,8 @@ If you build Flutter apps for iOS, this is how a Glutter app becomes an `.app` f
   (a package-level value, or a field of the state), which is what `const` achieves.
 - **Threads.** The framework runs on one goroutine, the UI thread. Other goroutines hand
   work over with `SetState` or the binding's `Post`; `State.Go` starts a goroutine that is
-  cancelled with the state. There is no `async` and `await`: blocking is fine on your own
+  cancelled with the state, and `State.GoErr` does the same for work that returns an error and
+  gives the error to a function on the UI thread. There is no `async` and `await`: blocking is fine on your own
   goroutines.
 - **Errors.** Flutter's exceptions are panics only for programmer errors (a debug-build
   `assert` is a check that exists in debug builds, which `-tags debug_mode` makes; a plain build is a release build without it). A

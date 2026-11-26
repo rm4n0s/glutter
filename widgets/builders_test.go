@@ -195,7 +195,7 @@ func TestFutureBuilderErrorKeepsTheRouteOfTheBuild(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errors.Error, got %T (%v)", last.Error(), last.Error())
 	}
-	if !appErr.HasRoute("futureBuilderState[...].InitState->futureBuilderState[...].subscribe->futureBuilderState[...].subscribe.func1->failingFuture." + tagBoom) {
+	if !appErr.HasRoute("futureBuilderState[...].InitState->futureBuilderState[...].subscribe->StateOf[...].GoErr->StateOf[...].GoErr.func1->futureBuilderState[...].subscribe.func1->failingFuture." + tagBoom) {
 		t.Errorf("unexpected failure path: %s", appErr.Route())
 	}
 }
