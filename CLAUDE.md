@@ -111,7 +111,7 @@ Before reporting a task as finished, run `gofmt`, `go vet ./...`, `golangci-lint
 - Ported code is a derivative of Flutter (BSD-3-Clause). Keep `third_party/flutter/LICENSE` and the NOTICE entry (SPEC §20) intact. The UI Automation code ported from Chromium's accessibility code (via Flutter) is under Chromium's BSD-3-Clause license: keep `third_party/chromium/LICENSE` and its NOTICE entry intact
 
 ## Error handling
-Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md` says. This is a requirement of the project owner: read the whole guide (it is in the module cache, `$(go env GOMODCACHE)/github.com/rm4n0s/errors@v0.2.0/AI_GUIDE.md`) before you write or change code that makes, returns, logs or tests an error, and again when the dependency version changes. SPEC §14.4 lists the rules with the reasons, and `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` checks them. Never use `fmt.Errorf`, and never import the standard library `errors` package under the name `errors`: this package re-exports `errors.Is`, `errors.As` and `errors.Unwrap`, so a single import covers everything (if `Join` is needed, import the standard one as `stdErrors "errors"`).
+Use `github.com/rm4n0s/errors` (v0.3.1) for all errors, the way its `AI_GUIDE.md` says. This is a requirement of the project owner: read the whole guide (it is in the module cache, `$(go env GOMODCACHE)/github.com/rm4n0s/errors@v0.3.1/AI_GUIDE.md`) before you write or change code that makes, returns, logs or tests an error, and again when the dependency version changes. SPEC §14.4 lists the rules with the reasons, and `go run ./cmd/glutter-gen errcheck -allow cmd/glutter-gen/errcheck.allow` checks them. Never use `fmt.Errorf`, and never import the standard library `errors` package under the name `errors`: this package re-exports `errors.Is`, `errors.As`, `errors.Unwrap` and `errors.Join`, so a single import covers everything (if something else of the standard package is needed, such as `errors.ErrUnsupported`, import it as `stdErrors "errors"`).
 
 **Creating errors**
 - New failure with a fixed message: `errors.New("Tag", "message", "key", value, ...)`. It always has a tag and a message
@@ -128,10 +128,18 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
 - Functions return the plain `error` interface, never `*errors.Error` (avoids the non-nil-interface-holding-nil-pointer bug)
 - `errors.FromError(err)` is a plain type assertion. It fails if something else wrapped the error, so don't wrap these errors with anything
 
+**Goroutines** (guide R7, SPEC §14.4)
+- Work whose error leaves its goroutine (a result channel or struct, a worker thread, a job of a pool, a function posted to the UI thread while the caller waits) is handed off through `errors.Async`: `work := errors.Async(func() error { return s.load() })` in the goroutine that starts the work, and `work()` in the one that does it. The route of an error that the function makes and **returns** then reads as if it had been called directly: `Service.Run->Service.Run.func1->Service.load.Tag`, with no `go` statement or runtime frame in it. A value that the work produces is assigned to a variable from inside the closure
+- Call `Async` before the `go` statement, never inside the goroutine (the parent would be lost; `errcheck` reports it as `async-in-goroutine`). For a pool or a queue, call it where the job is submitted. An error sent on a channel or given to a callback from inside the function does not pass through `Async`: make the function return it
+- `Async` replaces the stack of the error when its function returns; reading the route on another goroutine at that moment is safe (v0.3.1). When one error goes to several goroutines (a cache that answers every waiter with one error), the `Async` of the goroutine that made it wins: wrap the part that makes the error, not the cache (`svgPictureState.reload`). The setters are still not safe for concurrent use: no `SetMetadata`, `RemoveMetadata` or `SetMessage` on an error that another goroutine can still reach, and never on a sentinel
+- `errors.AsyncRecover` also turns a panic of the function into an error with the Tag `errors.TagPanic`. It changes a crash into an error, so it is used only where the spec asks for that; the panics of app code keep the recovery points of SPEC §14.2 (`State.Go`, `foundation.Guard`), whose errors have the tags `CallbackPanicked` and the like
+- Errors of several goroutines are combined with `errors.Join`; whoever gets a joined error reads it with `errors.All(err)`, which returns every `*errors.Error` in it (through `Join`, `%w` and `OriginalErr`, outermost first), because `FromError` does not look inside
+- A goroutine that only logs its errors itself needs nothing
+
 **Inspecting errors**
 - `appErr, ok := errors.FromError(err)`, then use `appErr.Tag`, `appErr.Metadata`, `appErr.Message`
 - Branch on the tag constant (`appErr.Tag == pkg.TagX`) or on `errors.Is(err, sentinel)` (it matches by Tag), never on a string literal, `Message` or `Error()`
-- Use `errors.Is` / `errors.As` / `errors.Unwrap` for the underlying cause stored in `OriginalErr`
+- Use `errors.Is` / `errors.As` / `errors.Unwrap` for the underlying cause stored in `OriginalErr`, and `errors.All(err)` for every `*errors.Error` of an error and its causes (a joined error, or the public tag that `desktop` gives to a bus error)
 
 **Logging errors**
 - Log with `slog` and pass the error as the attribute `"err"`: `logger.Error("what failed", "err", err)`. `*errors.Error` is an `slog.LogValuer`: the entry has `Tag`, `Message`, `Route`, `OriginalErr`, `Metadata` and `StackFrames`, and a test replays it with `json.Unmarshal` into `errors.ErrorJson` and `errors.FromJson`. Do not call `ToJson` or `json.Marshal` on an error to log it
@@ -148,7 +156,8 @@ Use `github.com/rm4n0s/errors` (v0.2.0) for all errors, the way its `AI_GUIDE.md
       t.Errorf("unexpected failure path: %s", appErr.Route())
   }
   ```
-- A route lists the call chain from outermost to innermost (`Type.Method` or `Func`, joined by `->`, no package names) and ends with the Tag. `Route` and `HasRoute` stop at the function that called them, so in a test the route starts just below the test function. `HasRoute` matches by substring: give the path from the entry function you call down to `.Tag`, so the tag is checked too. Print `appErr.Route()` when an assertion fails
+- A route lists the call chain from outermost to innermost (`Type.Method` or `Func`, joined by `->`, no package names) and ends with the Tag. Frames of the Go runtime (`goexit`, `main`, `gopanic`) never appear in it. `Route` and `HasRoute` stop at the function that called them, so in a test the route starts just below the test function. `HasRoute` matches by substring: give the path from the entry function you call down to `.Tag`, so the tag is checked too. Print `appErr.Route()` when an assertion fails
+- An error that crosses a goroutine through `errors.Async` is tested with the whole route, from the function that started the work: `HasRoute("Connect->dialWithoutContext->dialWithoutContext.func1->Connect.func1.DBusConnectFailed")`. A function literal in a route (`.func1`) keeps its name only while the function around it is not inlined somewhere else: a test gives the function it hands to the code under test a name of its own
 - Panics in user code and programmer errors follow SPEC §14
 
 ## Git and GitHub
