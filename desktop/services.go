@@ -153,6 +153,12 @@ func runProgram(ctx context.Context, env []string, name string, args ...string) 
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = append(os.Environ(), env...)
 	if err := cmd.Run(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// CommandContext kills the program when ctx ends, and Run then reports the kill, not ctx: the cancellation
+			// stays the cause of the error, so that errors.Is(err, context.Canceled) holds.
+			return errors.NewErr(tagProgramFailed, ctxErr).SetMessage("the program ended with the context").
+				SetMetadata("program", name, "reason", err.Error())
+		}
 		return errors.NewErr(tagProgramFailed, err).SetMetadata("program", name)
 	}
 	return nil

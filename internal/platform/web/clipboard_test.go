@@ -384,3 +384,24 @@ func TestClipboardHTML(t *testing.T) {
 const (
 	tagMarker = "Marker"
 )
+
+// TestClipboardWriteWithAnEndedContext: the write that finds its context done fails with WebClipboardWriteFailed and
+// the cancellation as its cause.
+func TestClipboardWriteWithAnEndedContext(t *testing.T) {
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	var p posts
+	c := clipboard{post: p.post, api: &fakeAPI{}}
+	var errs []error
+	c.SetContent(ended, ui.ClipboardKindSystem, ui.ClipboardContent{Text: "x", HasText: true}, func(e error) { errs = append(errs, e) })
+	c.SetContent(ended, ui.ClipboardKindSystem, ui.ClipboardContent{HTML: "<b>x</b>"}, func(e error) { errs = append(errs, e) })
+	p.run()
+	if len(errs) != 2 {
+		t.Fatalf("answers = %v, want 2", errs)
+	}
+	for _, err := range errs {
+		if tagOf(t, err) != "WebClipboardWriteFailed" || !errors.Is(err, context.Canceled) {
+			t.Errorf("got %v, want WebClipboardWriteFailed with the cancellation as its cause", err)
+		}
+	}
+}

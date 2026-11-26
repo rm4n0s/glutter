@@ -298,3 +298,41 @@ func TestInstalledBusStartsNoProgram(t *testing.T) {
 		t.Errorf("cause = %#v, want the program xdg-open in its metadata", appErr.OriginalErr)
 	}
 }
+
+// A call whose context is cancelled while it waits for the portal ends with the cancellation as the cause of its
+// error, so that State.GoErr of a screen that was closed tells it from a failure (errors.Is(err, context.Canceled)).
+func TestCancelledPortalCallsEndWithTheCancellation(t *testing.T) {
+	calls := []struct {
+		name   string
+		method string
+		call   func(ctx context.Context, bc widgets.BuildContext) error
+	}{
+		{"OpenURI", openURI, func(ctx context.Context, bc widgets.BuildContext) error {
+			return desktop.OpenURI(ctx, bc, "https://example.org")
+		}},
+		{"OpenFiles", chooser + "OpenFile", func(ctx context.Context, bc widgets.BuildContext) error {
+			_, err := desktop.OpenFiles(ctx, bc)
+			return err
+		}},
+	}
+	for _, tc := range calls {
+		t.Run(tc.name, func(t *testing.T) {
+			ts, bc := app(t)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			b := fakebus.New(unique)
+			b.Handle(dbus.PortalDest, dbus.PortalPath, tc.method, func(c fakebus.Call) ([]any, error) {
+				cancel() // the screen of the app was closed while the portal shows its dialog
+				return []any{dbus.PortalRequestPath(unique, tokenIn(t, c.Args[len(c.Args)-1].(map[string]godbus.Variant)))}, nil
+			})
+			b.HandleAnyPath(dbus.PortalDest, "org.freedesktop.portal.Request.Close", func(fakebus.Call) ([]any, error) { return nil, nil })
+			desktop.UseBus(bc, b)
+			desktop.UseProgram(bc, (&programs{}).run)
+			err := inGoroutine(t, ts, func() error { return tc.call(ctx, bc) })
+			assertTag(t, err, "PortalRequestAborted")
+			if !errors.Is(err, context.Canceled) {
+				t.Errorf("errors.Is(err, context.Canceled) is false for %v", err)
+			}
+		})
+	}
+}

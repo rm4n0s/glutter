@@ -186,7 +186,8 @@ func uriScheme(raw string) string {
 // Flutter: no counterpart (url_launcher_web: launchUrl)
 func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 	if err := ctx.Err(); err != nil {
-		return errors.New(tagOpenURIUnavailable, "the browser cannot open the URI", "uri", uri, "reason", "the context ended: "+err.Error())
+		return errors.NewErr(tagOpenURIUnavailable, err).SetMessage("the browser cannot open the URI").
+			SetMetadata("uri", uri, "reason", "the context ended: "+err.Error())
 	}
 	if scheme := uriScheme(uri); scheme != "" {
 		for _, b := range blockedSchemes {

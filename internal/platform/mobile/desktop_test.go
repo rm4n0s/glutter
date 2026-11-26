@@ -14,10 +14,15 @@ import (
 type fakeOpener struct {
 	calls []string
 	err   error
+	// onOpen, when set, runs inside Open: a test ends the context there.
+	onOpen func()
 }
 
 func (f *fakeOpener) Open(_ context.Context, uri string) error {
 	f.calls = append(f.calls, uri)
+	if f.onOpen != nil {
+		f.onOpen()
+	}
 	return f.err
 }
 
@@ -31,6 +36,8 @@ type fakeNotes struct {
 	shown     []Notification
 	showErr   error
 	canceled  []uint32
+	// onStatus, when set, runs inside Status: a test ends the context there.
+	onStatus func()
 }
 
 func (f *fakeNotes) SetSink(s Sink) { f.sink = s }
@@ -38,6 +45,9 @@ func (f *fakeNotes) SetSink(s Sink) { f.sink = s }
 func (f *fakeNotes) Status(context.Context) (Status, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.onStatus != nil {
+		f.onStatus()
+	}
 	return f.status, f.statusErr
 }
 
@@ -681,6 +691,53 @@ func TestNotificationTimeout(t *testing.T) {
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatal("the timeout never closed the notification")
+		}
+	})
+}
+
+// A cancellation stays the cause of the error of OpenURI, ShowNotification, whether ctx was done before the call or the
+// activity did not answer before it ended: errors.Is(err, context.Canceled) tells State.GoErr that the work ended as
+// expected.
+func TestEndedContextStaysTheCauseOfTheError(t *testing.T) {
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	t.Run("OpenURI before the call", func(t *testing.T) {
+		d, _, _, _ := newTestDesktop(api26)
+		err := d.OpenURI(ended, "glutter-nothing://x")
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("errors.Is(err, context.Canceled) is false for %v", err)
+		}
+	})
+	t.Run("OpenURI that ends with the context", func(t *testing.T) {
+		d, _, o, _ := newTestDesktop(api26)
+		ctx, stop := context.WithCancel(context.Background())
+		o.err = Refused{"the context ended: context canceled"}
+		o.onOpen = stop
+		err := d.OpenURI(ctx, "glutter-nothing://x")
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("errors.Is(err, context.Canceled) is false for %v", err)
+		}
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != tagOpenURIUnavailable || appErr.Metadata["reason"] == nil {
+			t.Errorf("got %v, want OpenURIUnavailable with the reason", err)
+		}
+	})
+	t.Run("OpenURI that fails with a live context", func(t *testing.T) {
+		d, _, o, _ := newTestDesktop(api26)
+		o.err = Refused{"no app can open glutter-nothing://x"}
+		err := d.OpenURI(context.Background(), "glutter-nothing://x")
+		if err == nil || errors.Is(err, context.Canceled) {
+			t.Errorf("got %v, want a failure that is no cancellation", err)
+		}
+	})
+	t.Run("ShowNotification whose status call ends with the context", func(t *testing.T) {
+		d, notes, _, _ := newTestDesktop(api26)
+		ctx, stop := context.WithCancel(context.Background())
+		notes.statusErr = Refused{"the context ended: context canceled"}
+		notes.onStatus = stop
+		_, err := d.ShowNotification(ctx, NotificationSpec{Title: "Hi"})
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("errors.Is(err, context.Canceled) is false for %v", err)
 		}
 	})
 }

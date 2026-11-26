@@ -106,20 +106,23 @@ func PortalRequest(ctx context.Context, bus Bus, method string, args func(handle
 
 	select {
 	case sig, ok := <-sigs:
-		if !ok {
+		if ok {
+			return parsePortalResponse(sig, method)
+		}
+		if ctx.Err() == nil {
 			return PortalResponse{}, errors.New(tagPortalRequestClosed, "the connection closed before the portal answered",
 				"method", method)
 		}
-		return parsePortalResponse(sig, method)
+		// The channel closed because ctx ended (the subscription follows it): the request is aborted, as in the other case.
 	case <-ctx.Done():
-		appErr := errors.NewErr(tagPortalRequestAborted, ctx.Err()).SetMetadata("method", method)
-		closeCtx, closeCancel := context.WithTimeout(context.WithoutCancel(ctx), portalCloseTimeout)
-		defer closeCancel()
-		if _, err := bus.Call(closeCtx, PortalDest, handle, portalRequestInterface+".Close"); err != nil {
-			appErr = appErr.SetMetadata("closeError", err.Error())
-		}
-		return PortalResponse{}, appErr
 	}
+	appErr := errors.NewErr(tagPortalRequestAborted, ctx.Err()).SetMetadata("method", method)
+	closeCtx, closeCancel := context.WithTimeout(context.WithoutCancel(ctx), portalCloseTimeout)
+	defer closeCancel()
+	if _, err := bus.Call(closeCtx, PortalDest, handle, portalRequestInterface+".Close"); err != nil {
+		appErr = appErr.SetMetadata("closeError", err.Error())
+	}
+	return PortalResponse{}, appErr
 }
 
 // PortalRequestPath is the object path of the request that the portal makes

@@ -173,3 +173,22 @@ func TestDesktopErrorRoutes(t *testing.T) {
 		})
 	}
 }
+
+// TestDesktopCancellationStaysTheCauseOfTheError: the error of an OpenURI whose context ended has the
+// cancellation as its cause, so that a caller (State.GoErr) tells it from a failure with errors.Is.
+func TestDesktopCancellationStaysTheCauseOfTheError(t *testing.T) {
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	d, _, _, _ := newTestDesktop("granted")
+	err := d.OpenURI(ended, "https://example.org")
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("errors.Is(err, context.Canceled) is false for %v", err)
+	}
+	appErr, ok := errors.FromError(err)
+	if !ok || appErr.Tag != tagOpenURIUnavailable {
+		t.Fatalf("got %v, want OpenURIUnavailable", err)
+	}
+	if appErr.Message != "the browser cannot open the URI" {
+		t.Errorf("message = %q", appErr.Message)
+	}
+}

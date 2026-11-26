@@ -465,10 +465,15 @@ type fakePermissions struct {
 	granted bool
 	err     error
 	asked   int
+	// onAsk, when set, runs when the permission is asked: a test ends the context there.
+	onAsk func()
 }
 
 func (p *fakePermissions) RecordAudio(ctx context.Context) (bool, error) {
 	p.asked++
+	if p.onAsk != nil {
+		p.onAsk()
+	}
 	return p.granted, p.err
 }
 
@@ -509,6 +514,19 @@ func TestCapture(t *testing.T) {
 		}
 		if len(f.builders) != 0 {
 			t.Error("a stream was opened without the permission")
+		}
+	})
+	t.Run("the wait for the answer ends with the context", func(t *testing.T) {
+		f := newFakeAudio(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		perm := &fakePermissions{err: os.ErrDeadlineExceeded, onAsk: cancel}
+		_, err := f.service(perm).Open(ctx, platform.AudioCapture, platform.AudioOpenOptions{}, &handler{})
+		appErr, ok := errors.FromError(err)
+		if !ok || appErr.Tag != platform.TagAudioCapturePermissionDenied || !appErr.HasRoute("Service.Open.AudioCapturePermissionDenied") {
+			t.Fatalf("got %v", err)
+		}
+		if !errors.Is(err, context.Canceled) || appErr.Metadata["reason"] == nil {
+			t.Errorf("errors.Is(err, context.Canceled) is false for %v, or the reason is missing: %v", err, appErr.Metadata)
 		}
 	})
 	t.Run("the permission cannot be asked", func(t *testing.T) {

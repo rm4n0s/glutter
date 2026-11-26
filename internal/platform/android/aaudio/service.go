@@ -154,6 +154,11 @@ func (s *Service) Open(ctx context.Context, kind platform.AudioKind, opts platfo
 	if kind == platform.AudioCapture && s.perm != nil {
 		granted, err := s.perm.RecordAudio(ctx)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				// The wait for the user's answer ended with ctx: the cancellation stays the cause of the error.
+				return nil, errors.NewErr(platform.TagAudioCapturePermissionDenied, ctxErr).
+					SetMetadata("permission", "android.permission.RECORD_AUDIO", "reason", err.Error())
+			}
 			return nil, errors.NewErr(platform.TagAudioCapturePermissionDenied, err).SetMetadata("permission", "android.permission.RECORD_AUDIO")
 		}
 		if !granted {

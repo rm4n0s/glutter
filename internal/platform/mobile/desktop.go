@@ -316,7 +316,8 @@ func URIScheme(raw string) string { return uriScheme(raw) }
 // Flutter: no counterpart (url_launcher_android: launchUrl)
 func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 	if err := ctx.Err(); err != nil {
-		return errors.New(tagOpenURIUnavailable, "Android cannot open the URI", "uri", uri, "reason", "the context ended: "+err.Error())
+		return errors.NewErr(tagOpenURIUnavailable, err).SetMessage("Android cannot open the URI").
+			SetMetadata("uri", uri, "reason", "the context ended: "+err.Error())
 	}
 	if scheme := uriScheme(uri); scheme != "" {
 		for _, b := range blockedSchemes {
@@ -329,6 +330,11 @@ func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 		return errors.New(tagOpenURIUnavailable, "Android cannot open the URI", "uri", uri, "reason", "the program is not running in an Android activity")
 	}
 	if err := d.opener.Open(ctx, uri); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			// The activity did not answer before ctx ended: the cancellation stays the cause of the error.
+			return errors.NewErr(tagOpenURIUnavailable, ctxErr).SetMessage("Android cannot open the URI").
+				SetMetadata("uri", uri, "reason", err.Error())
+		}
 		return errors.New(tagOpenURIUnavailable, "Android cannot open the URI", "uri", uri, "reason", err.Error())
 	}
 	return nil
@@ -342,6 +348,10 @@ func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 func (d *Desktop) ensurePermission(ctx context.Context) error {
 	st, err := d.notes.Status(ctx)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return errors.NewErr(tagNotificationsUnavailable, ctxErr).SetMessage("Android cannot show notifications").
+				SetMetadata("reason", "the notification manager did not answer: "+err.Error())
+		}
 		return errors.New(tagNotificationsUnavailable, "Android cannot show notifications", "reason", "the notification manager did not answer: "+err.Error())
 	}
 	if st.PermissionNeeded && !st.PermissionGranted {
@@ -350,6 +360,10 @@ func (d *Desktop) ensurePermission(ctx context.Context) error {
 		}
 		st, err = d.notes.Status(ctx)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return errors.NewErr(tagNotificationsUnavailable, ctxErr).SetMessage("Android cannot show notifications").
+					SetMetadata("reason", "the notification manager did not answer: "+err.Error())
+			}
 			return errors.New(tagNotificationsUnavailable, "Android cannot show notifications", "reason", "the notification manager did not answer: "+err.Error())
 		}
 		if st.PermissionNeeded && !st.PermissionGranted {
@@ -453,6 +467,10 @@ func (d *Desktop) ShowNotification(ctx context.Context, spec NotificationSpec) (
 		var blocked Blocked
 		if errors.As(err, &blocked) {
 			return 0, errors.New(tagNotificationsUnavailable, "the user turned off this kind of notification", "reason", blocked.Reason)
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, errors.NewErr(tagAndroidNotificationFailed, ctxErr).SetMessage("Android could not post the notification").
+				SetMetadata("reason", err.Error())
 		}
 		return 0, errors.New(tagAndroidNotificationFailed, "Android could not post the notification", "reason", err.Error())
 	}

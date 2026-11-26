@@ -136,7 +136,7 @@ func (c clipboard) write(ctx context.Context, text string, done func(error)) {
 		return
 	}
 	if err := ctx.Err(); err != nil {
-		c.answerErr(done, errors.New(tagWebClipboardWriteFailed, "navigator.clipboard.writeText failed", "detail", err.Error()))
+		c.answerErr(done, errors.NewErr(tagWebClipboardWriteFailed, err).SetMessage("navigator.clipboard.writeText failed").SetMetadata("detail", err.Error()))
 		return
 	}
 	c.api.WriteText(text, func(err error) { c.answerErr(done, err) })
@@ -150,7 +150,7 @@ func (c clipboard) writeRich(ctx context.Context, content ui.ClipboardContent, d
 		return
 	}
 	if err := ctx.Err(); err != nil {
-		c.answerErr(done, errors.New(tagWebClipboardWriteFailed, "navigator.clipboard.write failed", "detail", err.Error()))
+		c.answerErr(done, errors.NewErr(tagWebClipboardWriteFailed, err).SetMessage("navigator.clipboard.write failed").SetMetadata("detail", err.Error()))
 		return
 	}
 	c.api.WriteRich(content.Text, content.HasText, content.HTML, func(err error) { c.answerErr(done, err) })
