@@ -332,6 +332,57 @@ func prefix() string { return "p" }
 	}
 }
 
+// TestAsyncInGoroutine: errors.Async belongs to the goroutine that hands the work off (R7).
+func TestAsyncInGoroutine(t *testing.T) {
+	got := check(t, map[string]string{"fix/fix.go": `package fix
+
+import "github.com/rm4n0s/errors"
+
+const tagWork = "Work"
+
+func work(n int) error {
+	if n > 0 {
+		return errors.New(tagWork, "x", "n", n)
+	}
+	return nil
+}
+
+func inside(n int) error {
+	ch := make(chan error, 1)
+	go func() { ch <- errors.Async(func() error { return work(n) })() }()
+	return <-ch
+}
+
+func recoverInside(n int) error {
+	ch := make(chan error, 1)
+	go func() {
+		run := errors.AsyncRecover(func() error { return work(n) })
+		ch <- run()
+	}()
+	return <-ch
+}
+
+func outside(n int) error {
+	ch := make(chan error, 1)
+	run := errors.Async(func() error { return work(n) })
+	go func() { ch <- run() }()
+	return <-ch
+}
+
+func send(ch chan<- error, run func() error) { ch <- run() }
+
+func asArgument(n int) error {
+	ch := make(chan error, 1)
+	go send(ch, errors.Async(func() error { return work(n) }))
+	return <-ch
+}
+`}, false)
+	want := []string{"async-in-goroutine inside", "async-in-goroutine recoverInside"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("violations = %v, want %v", got, want)
+	}
+}
+
 func TestRunReportsAndAccepts(t *testing.T) {
 	// One pass is enough for the fixture, and the test must not need an NDK.
 	passes := []Pass{{GOOS: "linux", GOARCH: "amd64"}}

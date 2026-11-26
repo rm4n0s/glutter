@@ -78,12 +78,13 @@ func newDevice(s *Service, kind platform.AudioKind, opts platform.AudioOpenOptio
 // Format returns the format of the frames of the handler.
 func (d *device) Format() platform.AudioFormat { return d.format }
 
-// run is the goroutine of the device: it opens the stream, tells Open, and serves the engine until the device is closed.
-func (d *device) run() {
+// run is the goroutine of the device: it opens the stream with start, tells Open, and serves the engine until the device
+// is closed.
+func (d *device) run(start func() error) {
 	runtime.LockOSThread()
 	defer close(d.done)
 	defer d.finish()
-	err := d.start()
+	err := start()
 	d.ready <- err
 	if err != nil {
 		return

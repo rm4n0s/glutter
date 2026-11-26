@@ -176,6 +176,30 @@ func TestFutureBuilder(t *testing.T) {
 	}
 }
 
+// failingFuture is a future that fails with an error that it makes itself, on the goroutine of the FutureBuilder.
+func failingFuture(context.Context) (string, error) {
+	return "", errors.New(tagBoom, "boom")
+}
+
+// TestFutureBuilderErrorKeepsTheRouteOfTheBuild: the future runs on a goroutine of the state, and errors.Async carries
+// the route of its error across, so it goes on with the functions that started the future (rm4n0s/errors R7).
+func TestFutureBuilderErrorKeepsTheRouteOfTheBuild(t *testing.T) {
+	ts := gluttertest.New(t, gluttertest.Opts{})
+	var last AsyncSnapshot[string]
+	pumpLoose(ts, NewFutureBuilder(failingFuture, func(bc BuildContext, s AsyncSnapshot[string]) Widget {
+		last = s
+		return newLeaf()
+	}), ui.TextDirectionLTR)
+	waitFor(t, ts, func() bool { return last.HasError() })
+	appErr, ok := errors.FromError(last.Error())
+	if !ok {
+		t.Fatalf("expected *errors.Error, got %T (%v)", last.Error(), last.Error())
+	}
+	if !appErr.HasRoute("futureBuilderState[...].InitState->futureBuilderState[...].subscribe->futureBuilderState[...].subscribe.func1->failingFuture." + tagBoom) {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
+}
+
 func TestFutureBuilderIdentityRestartsAndNilStops(t *testing.T) {
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	starts := 0

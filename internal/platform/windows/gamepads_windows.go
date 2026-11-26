@@ -100,23 +100,27 @@ type padMonitorOpts struct {
 func startPadMonitor(p *Platform, svc *winpad.Service, opts padMonitorOpts) (*padMonitor, error) {
 	m := &padMonitor{p: p, svc: svc, done: make(chan struct{}), opts: opts}
 	ready := make(chan error, 1)
-	go m.run(ready)
+	// The window is made on the thread of the monitor. Its making is handed to that thread through errors.Async, so that
+	// the route of its error goes on with the functions that started the monitor (rm4n0s/errors R7, SPEC §14.4).
+	var devices []win32.RawInputDevice
+	setup := errors.Async(func() error {
+		var err error
+		devices, err = m.setup()
+		return err
+	})
+	go m.run(setup, &devices, ready)
 	if err := <-ready; err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-func (m *padMonitor) run(ready chan<- error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	defer close(m.done)
-	m.token = registerTarget(m)
-	defer unregisterTarget(m.token)
+// setup makes the window of the monitor and asks for the raw input, on the thread of the monitor. It returns the devices
+// that it registered.
+func (m *padMonitor) setup() ([]win32.RawInputDevice, error) {
 	hwnd, err := win32.CreateWindowEx(0, m.opts.class, "", 0, 0, 0, 0, 0, win32.HWNDMessage, 0, m.p.instance, m.token)
 	if err != nil {
-		ready <- err
-		return
+		return nil, err
 	}
 	m.hwnd = hwnd
 	// The reports of the joysticks, gamepads and multi-axis controllers come to the window even when it is not in front, and so
@@ -127,9 +131,24 @@ func (m *padMonitor) run(ready chan<- error) {
 	}
 	if !m.opts.register(devices) {
 		_ = win32.DestroyWindow(hwnd) // the window is not wanted without the input
-		ready <- errors.New(tagPadMonitorRegisterFailed, "RegisterRawInputDevices failed")
+		return nil, errors.New(tagPadMonitorRegisterFailed, "RegisterRawInputDevices failed")
+	}
+	return devices, nil
+}
+
+// run is the thread of the monitor. setup makes the window and leaves the devices it registered in registered; only this
+// goroutine calls it and reads registered.
+func (m *padMonitor) run(setup func() error, registered *[]win32.RawInputDevice, ready chan<- error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	defer close(m.done)
+	m.token = registerTarget(m)
+	defer unregisterTarget(m.token)
+	if err := setup(); err != nil {
+		ready <- err
 		return
 	}
+	devices := *registered
 	ready <- nil
 	var msg win32.Msg
 	for win32.GetMessage(&msg, 0, 0, 0) > 0 {

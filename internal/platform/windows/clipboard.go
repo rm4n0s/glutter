@@ -638,16 +638,25 @@ func asyncRead[T any](ctx context.Context, post func(func()), read func() (T, er
 		post(func() { finish(zero, err) })
 		return
 	}
+	// The read and the end of ctx run on goroutines of their own. Both are handed off through errors.Async, so that the
+	// route of their error goes on with the functions that asked for the clipboard (rm4n0s/errors R7, SPEC §14.4).
+	timeout := errors.Async(func() error { return errors.NewErr(tagClipboardReadTimeout, ctx.Err()) })
 	stop := context.AfterFunc(ctx, func() {
-		err := errors.NewErr(tagClipboardReadTimeout, ctx.Err())
+		err := timeout()
 		post(func() { finish(zero, err) })
+	})
+	var got T
+	work := errors.Async(func() error {
+		var err error
+		got, err = read()
+		return err
 	})
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		v, err := read()
+		err := work()
 		stop()
-		post(func() { finish(v, err) })
+		post(func() { finish(got, err) })
 	}()
 }
 

@@ -182,7 +182,10 @@ func (c clipboard) read(ctx context.Context, start func(api clipboardAPI, done f
 			c.post(func() { done(text, err) })
 		}
 	}
-	stop := context.AfterFunc(ctx, func() { finish("", errors.NewErr(tagClipboardReadTimeout, ctx.Err())) })
+	// The end of ctx runs on a goroutine of its own. It is handed off through errors.Async, so that the route of the
+	// timeout goes on with the functions that asked for the clipboard (rm4n0s/errors R7, SPEC §14.4).
+	timeout := errors.Async(func() error { return errors.NewErr(tagClipboardReadTimeout, ctx.Err()) })
+	stop := context.AfterFunc(ctx, func() { finish("", timeout()) })
 	start(c.api, func(text string, err error) {
 		stop()
 		finish(text, err)

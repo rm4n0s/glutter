@@ -191,8 +191,13 @@ func TestClipboardReadFailures(t *testing.T) {
 		defer cancel()
 		r := e.getText(ctx)
 		appErr, ok := errors.FromError(r.err)
-		if !ok || !appErr.HasRoute("readClipboard.ClipboardReadTimeout") {
+		// The pipe is read on a goroutine of its own: errors.Async carries the route across, from the call that asked
+		// for the text (rm4n0s/errors R7).
+		if !ok || !appErr.HasRoute("clipboard.GetText->clipboard.GetContent->selection.get->selection.get.func5->readClipboard.ClipboardReadTimeout") {
 			t.Errorf("GetText = %+v, want ClipboardReadTimeout", r)
+			if ok {
+				t.Errorf("unexpected failure path: %s", appErr.Route())
+			}
 		}
 	})
 }

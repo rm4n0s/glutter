@@ -156,7 +156,8 @@ func startPortal(t *testing.T, addr string, all map[string]map[string]godbus.Var
 func TestConnectFailsWithoutASessionBus(t *testing.T) {
 	t.Setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/glutter-bus")
 	_, err := dbus.Connect(context.Background())
-	assertRoute(t, err, "Connect.func1.DBusConnectFailed")
+	// The dial runs on a goroutine of dialWithoutContext, and errors.Async carries the route across (rm4n0s/errors R7).
+	assertRoute(t, err, "Connect->dialWithoutContext->dialWithoutContext.func1->Connect.func1.DBusConnectFailed")
 }
 
 func TestRealBusSettingsRoundTrip(t *testing.T) {

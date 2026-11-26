@@ -115,8 +115,16 @@ func (s *services) connect(ctx context.Context, tag string) (dbus.Bus, error) {
 	// when the context it was made with ends: the connection gets a context that never
 	// ends, and only the wait for it is bounded.
 	done := make(chan connectResult, 1)
+	var b dbus.Bus
+	// Handed to the goroutine through errors.Async (rm4n0s/errors R7): the route of the opener's error, which is the
+	// cause of the one made below, goes on with the functions that asked for the bus.
+	open := errors.Async(func() error {
+		var err error
+		b, err = s.open(context.Background())
+		return err
+	})
 	go func() {
-		b, err := s.open(context.Background())
+		err := open()
 		done <- connectResult{b, err}
 	}()
 	timer := time.NewTimer(connectTimeout)

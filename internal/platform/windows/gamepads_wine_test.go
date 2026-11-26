@@ -165,11 +165,13 @@ func TestWineGamepadErrorsHaveTheirRoutes(t *testing.T) {
 	}
 	t.Run("a window of a class that is not there", func(t *testing.T) {
 		_, err := startPadMonitor(p, svc, padMonitorOpts{class: "NoSuchGamepadClass", register: win32.RegisterRawInputDevices})
-		checkRoute(t, err, win32.TagWin32WindowCreateFailed, "padMonitor.run->CreateWindowEx.Win32WindowCreateFailed")
+		// The window is made on the thread of the monitor: errors.Async carries the route across, so it starts at
+		// startPadMonitor (rm4n0s/errors R7).
+		checkRoute(t, err, win32.TagWin32WindowCreateFailed, "startPadMonitor->startPadMonitor.func1->padMonitor.setup->CreateWindowEx.Win32WindowCreateFailed")
 	})
 	t.Run("raw input that cannot be asked for", func(t *testing.T) {
 		_, err := startPadMonitor(p, svc, padMonitorOpts{class: padClassName, register: func([]win32.RawInputDevice) bool { return false }})
-		checkRoute(t, err, tagPadMonitorRegisterFailed, "padMonitor.run.PadMonitorRegisterFailed")
+		checkRoute(t, err, tagPadMonitorRegisterFailed, "startPadMonitor->startPadMonitor.func1->padMonitor.setup.PadMonitorRegisterFailed")
 	})
 	src := newRawInputHID(slog.Default())
 	missing := winpad.HIDDevice{Handle: 0xdead, Path: "nothing"}

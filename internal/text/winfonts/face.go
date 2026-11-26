@@ -77,22 +77,32 @@ func Scan(ctx context.Context, files []string, cache *Cache, onError func(path s
 	workers := min(max(runtime.NumCPU(), 2), 8)
 	var mu sync.Mutex // the cache
 	for range workers {
+		// Each worker reads its files through a function that errors.Async made here, so that the route of a file
+		// that cannot be read starts at Scan and not at the worker's goroutine (rm4n0s/errors R7, SPEC §14.4). The
+		// path and the faces are the worker's own.
+		var path string
+		var faces []Face
+		describe := errors.Async(func() error {
+			var err error
+			faces, err = Describe(path)
+			return err
+		})
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for i := range next {
-				path := files[i]
+				path = files[i]
 				stamp, hasStamp := stampOf(path)
 				if cache != nil && hasStamp {
 					mu.Lock()
-					faces, ok := cache.lookup(path, stamp)
+					known, ok := cache.lookup(path, stamp)
 					mu.Unlock()
 					if ok {
-						results[i].faces = faces
+						results[i].faces = known
 						continue
 					}
 				}
-				faces, err := Describe(path)
+				err := describe()
 				results[i] = result{faces, err}
 				if err == nil && cache != nil && hasStamp {
 					mu.Lock()

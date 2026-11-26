@@ -153,9 +153,17 @@ func onUI[T any](ctx context.Context, d *Desktop, fn func() (T, error)) (v T, er
 		err error
 	}
 	ch := make(chan result, 1)
+	var got T
+	// fn is handed to the UI thread through errors.Async: the route of its error goes on with the functions of the
+	// goroutine that waits for it (rm4n0s/errors R7, SPEC §14.4).
+	call := errors.Async(func() error {
+		var err error
+		got, err = fn()
+		return err
+	})
 	d.shell.Post(func() {
-		v, err := fn()
-		ch <- result{v, err}
+		err := call()
+		ch <- result{got, err}
 	})
 	select {
 	case r := <-ch:
@@ -175,8 +183,10 @@ func (d *Desktop) OpenURI(ctx context.Context, uri string) error {
 		return err
 	}
 	done := make(chan error, 1)
+	// Handed to the worker thread through errors.Async (rm4n0s/errors R7): the route of its error starts at OpenURI.
+	open := errors.Async(func() error { return d.shell.ShellExecute(uri) })
 	d.shell.Worker(func() func() {
-		err := d.shell.ShellExecute(uri)
+		err := open()
 		return func() { done <- err }
 	})
 	select {

@@ -205,17 +205,11 @@ func Perf(ctx context.Context, o PerfOptions) (PerfResult, error) {
 	c := &perfCollector{res: &res, raf0: -1, raf1: -1, timer0: -1, timer1: -1}
 	collectCtx, stopCollecting := context.WithCancel(ctx)
 	defer stopCollecting()
-	failed := make(chan error, 1)
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		c.run(collectCtx, srv, proc, failed)
-	}()
+	failed, wait := c.start(collectCtx, srv, proc)
 	// done stops the collector and waits for it: it is the only writer of the result until then.
 	done := func(err error) (PerfResult, error) {
 		stopCollecting()
-		wg.Wait()
+		wait()
 		if err == nil && c.raf0 >= 0 {
 			res.RAFCalls, res.TimerCalls = c.raf1-c.raf0, c.timer1-c.timer0
 		}
@@ -260,21 +254,36 @@ func (c *perfCollector) record(on bool) {
 	c.mu.Unlock()
 }
 
-// run reads the results until ctx ends; a program that ends or a browser that ends goes to failed.
-func (c *perfCollector) run(ctx context.Context, srv *Server, proc *Process, failed chan<- error) {
+// start runs the collector on a goroutine of its own until ctx ends. A program that ends or a browser that ends goes
+// to failed, once; wait returns when the goroutine has ended. The collector is handed to its goroutine through
+// errors.Async, so that the route of its error goes on with the functions of the measurement (rm4n0s/errors R7).
+func (c *perfCollector) start(ctx context.Context, srv *Server, proc *Process) (failed <-chan error, wait func()) {
+	out := make(chan error, 1)
+	run := errors.Async(func() error { return c.run(ctx, srv, proc) })
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := run(); err != nil {
+			out <- err
+		}
+	}()
+	return out, wg.Wait
+}
+
+// run reads the results until ctx ends; it fails when the program ends or the browser ends.
+func (c *perfCollector) run(ctx context.Context, srv *Server, proc *Process) error {
 	for {
 		select {
 		case r := <-srv.results:
 			if r.Kind == "exit" {
-				failed <- errors.New(tagWebAppFailed, "the app ended during the measurement", r.exitMetadata()...)
-				return
+				return errors.New(tagWebAppFailed, "the app ended during the measurement", r.exitMetadata()...)
 			}
 			c.take(r)
 		case <-proc.Done():
-			failed <- errors.New(tagBrowserExited, "the browser ended during the measurement", proc.exitMetadata()...)
-			return
+			return errors.New(tagBrowserExited, "the browser ended during the measurement", proc.exitMetadata()...)
 		case <-ctx.Done():
-			return
+			return nil
 		}
 	}
 }

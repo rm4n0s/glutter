@@ -117,7 +117,15 @@ func startWith(drv Driver, info DeviceInfo, t Transport, h Handler, opts Options
 		gap = 10 * time.Millisecond
 	}
 	d.out = newOutbox(t, gap)
-	go d.run()
+	// The start of the driver is handed to the goroutine through errors.Async: the route of a driver that cannot start
+	// goes on with the functions that opened the pad (rm4n0s/errors R7, SPEC §14.4).
+	var caps Caps
+	start := errors.Async(func() error {
+		var err error
+		caps, err = d.drv.Start(devIO{d})
+		return err
+	})
+	go d.run(start, &caps)
 	return d
 }
 
@@ -132,12 +140,14 @@ func (d *Device) Close() {
 	<-d.done
 }
 
-// run is the goroutine of the device.
-func (d *Device) run() {
+// run is the goroutine of the device. start starts the driver and leaves what the pad can do in started; only this
+// goroutine calls it and reads started.
+func (d *Device) run(start func() error, started *Caps) {
 	defer close(d.done)
 	defer d.out.close()
 	d.mu.Lock()
-	caps, err := d.drv.Start(devIO{d})
+	err := start()
+	caps := *started
 	if err == nil {
 		d.caps, d.ready = caps, true
 	}

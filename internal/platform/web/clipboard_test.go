@@ -170,6 +170,11 @@ func TestClipboardReadEndsWithItsContext(t *testing.T) {
 	if answers != 1 || tagOf(t, err) != "ClipboardReadTimeout" {
 		t.Errorf("answers = %d, err = %v, want one ClipboardReadTimeout", answers, err)
 	}
+	// The end of the context runs on a goroutine of its own: errors.Async carries the route across, from the call that
+	// asked for the text (rm4n0s/errors R7).
+	if appErr, _ := errors.FromError(err); !appErr.HasRoute("clipboard.GetText->clipboard.read->clipboard.read.func4.ClipboardReadTimeout") {
+		t.Errorf("unexpected failure path: %s", appErr.Route())
+	}
 
 	// A context that is over before the call: nothing is started.
 	api2 := &fakeAPI{}

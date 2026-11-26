@@ -252,6 +252,51 @@ func TestAwaitStartsAndClicksRead(t *testing.T) {
 	}
 }
 
+// TestPerfCollectorKeepsTheRouteOfTheMeasurement: the collector reads the results on a goroutine of its own, and
+// errors.Async carries the route of its error across, so it starts at the function that started the collector
+// (rm4n0s/errors R7).
+func TestPerfCollectorKeepsTheRouteOfTheMeasurement(t *testing.T) {
+	closed := &Process{done: make(chan struct{})}
+	close(closed.done)
+	tests := []struct {
+		name   string
+		proc   *Process
+		result *Result
+		tag    string
+		route  string
+	}{
+		{"the app ends", &Process{done: make(chan struct{})}, &Result{Kind: "exit", ExitCode: 2, Log: "boom\n"}, tagWebAppFailed,
+			"perfCollector.start->perfCollector.start.func1->perfCollector.run.WebAppFailed"},
+		{"the browser ends", closed, nil, tagBrowserExited,
+			"perfCollector.start->perfCollector.start.func1->perfCollector.run.BrowserExited"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := newTestServer(t)
+			if tt.result != nil {
+				srv.results <- *tt.result
+			}
+			var res PerfResult
+			c := &perfCollector{res: &res, raf0: -1, raf1: -1, timer0: -1, timer1: -1}
+			failed, wait := c.start(context.Background(), srv, tt.proc)
+			var err error
+			select {
+			case err = <-failed:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the collector did not fail")
+			}
+			wait()
+			appErr, ok := errors.FromError(err)
+			if !ok {
+				t.Fatalf("expected *errors.Error, got %T (%v)", err, err)
+			}
+			if appErr.Tag != tt.tag || !appErr.HasRoute(tt.route) {
+				t.Errorf("got %s via %s, want %s via %s", appErr.Tag, appErr.Route(), tt.tag, tt.route)
+			}
+		})
+	}
+}
+
 func TestRAFData(t *testing.T) {
 	d, ok := rafData(Result{Data: json.RawMessage(`{"count":7,"timers":2,"intervals":[8.5,9]}`)})
 	if !ok || d.Count != 7 || d.Timers != 2 || len(d.Intervals) != 2 {

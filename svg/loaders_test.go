@@ -302,6 +302,11 @@ func TestSvgPicturePlaceholderAndError(t *testing.T) {
 		if !ok || appErr.Tag != TagSvgLoadFailed {
 			t.Fatalf("reported = %v", reported[0])
 		}
+		// The asset is loaded on a goroutine of its own: the route goes on, through errors.Async, with the build that
+		// asked for the picture (rm4n0s/errors R7).
+		if !appErr.HasRoute(loadRoute + "assetSource.load.SvgLoadFailed") {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
 		if seen != reported[0] {
 			t.Errorf("the builder got %v, the reporter %v", seen, reported[0])
 		}
@@ -334,6 +339,55 @@ func TestSvgPicturePlaceholderAndError(t *testing.T) {
 			pumpTopLeft(ts, NewSvgPictureString(tt.src, SvgPictureOpts{Width: some(12.0), Height: some(13.0)}))
 			if n := len(ts.TakeErrors()); n != 0 {
 				t.Errorf("%d more errors reported", n)
+			}
+		})
+	}
+}
+
+// loadRoute is the path from the first build of a picture's state to the function that its goroutine runs: errors.Async
+// carries the route of a load across the goroutine (rm4n0s/errors R7).
+const loadRoute = "StatefulElement.firstBuild->svgPictureState.DidChangeDependencies->svgPictureState.reload->svgPictureState.reload.func2->"
+
+func TestSvgPictureLoadErrorsKeepTheRouteOfTheBuild(t *testing.T) {
+	tests := []struct {
+		name  string
+		files map[string]string
+		route string
+	}{
+		{"an asset that the bundle has not", nil, loadRoute + "assetSource.load.SvgLoadFailed"},
+		{"an asset that is not XML", map[string]string{"a.svg": `<svg><g></svg>`}, loadRoute + "parseEntry->Parse->Parse->readXML.SvgParseFailed"},
+		{"an asset that is not svg", map[string]string{"a.svg": `<html xmlns="http://www.w3.org/1999/xhtml"/>`}, loadRoute + "parseEntry->Parse->Parse.SvgNotSvg"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Two pictures of one document: one of them loads it and the other waits for the same answer, each on its
+			// goroutine. Both report the one error, whose route was set before the cache gave it to the second.
+			bundle := newCountingBundle(tt.files)
+			ts := newTester(t)
+			pumpTopLeft(ts, widgets.NewColumn([]widgets.Widget{
+				NewSvgPictureAsset("a.svg", SvgPictureAssetOpts{Bundle: bundle}),
+				NewSvgPictureAsset("a.svg", SvgPictureAssetOpts{Bundle: bundle}),
+			}))
+			waitFor(t, ts, func() bool {
+				for _, e := range ts.Elements(gluttertest.ByType[*SvgPicture]()) {
+					if e.(*widgets.StatefulElement).State().(*svgPictureState).err == nil {
+						return false
+					}
+				}
+				return true
+			})
+			reported := ts.TakeErrors()
+			if len(reported) != 2 {
+				t.Fatalf("%d errors reported, want 2", len(reported))
+			}
+			for _, err := range reported {
+				appErr, ok := errors.FromError(err)
+				if !ok {
+					t.Fatalf("expected *errors.Error, got %T: %v", err, err)
+				}
+				if !appErr.HasRoute(tt.route) {
+					t.Errorf("unexpected failure path: %s", appErr.Route())
+				}
 			}
 		})
 	}

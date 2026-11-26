@@ -252,7 +252,7 @@ func TestTheOtherServicesAreUnavailableOnTheWeb(t *testing.T) {
 		var err error
 		waitFor(t, ts, "the error", func() bool { err = ts.TakeError(); return err != nil })
 		appErr := tagged(t, err, "TrayUnavailable")
-		if !appErr.HasRoute("tray.run->services.connect.TrayUnavailable") {
+		if !appErr.HasRoute(trayRoute + "tray.run->services.connect.TrayUnavailable") {
 			t.Errorf("unexpected failure path: %s", appErr.Route())
 		}
 		if inner, ok := errors.FromError(appErr.OriginalErr); !ok || inner.Tag != "DBusUnavailableOnWeb" {

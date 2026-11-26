@@ -271,7 +271,8 @@ func TestConnectWithACancelledContext(t *testing.T) {
 		}
 		// The context ended first, or the dial failed because it ended.
 		appErr, _ := errors.FromError(err)
-		if !appErr.HasRoute("dialWithoutContext.DBusConnectFailed") && !appErr.HasRoute("Connect.func1.DBusConnectFailed") {
+		if !appErr.HasRoute("Connect->dialWithoutContext.DBusConnectFailed") &&
+			!appErr.HasRoute("Connect->dialWithoutContext->dialWithoutContext.func1->Connect.func1.DBusConnectFailed") {
 			t.Errorf("unexpected failure path: %s", appErr.Route())
 		}
 		return

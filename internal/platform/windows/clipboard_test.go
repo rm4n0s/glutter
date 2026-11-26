@@ -783,8 +783,23 @@ func TestAsyncReadThatTheContextEndsAnswersOnce(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("done was called %d times, want once", len(results))
 	}
-	assertTagRoute(t, results[0], "ClipboardReadTimeout", "ClipboardReadTimeout")
+	// The context ended on a goroutine of its own: errors.Async carries the route across, so it starts at asyncRead
+	// (rm4n0s/errors R7).
+	assertTagRoute(t, results[0], "ClipboardReadTimeout", "asyncRead[...]->asyncRead[...].func3.ClipboardReadTimeout")
 }
+
+// TestAsyncReadKeepsTheRouteAcrossTheThread: the read runs on a thread of its own, and errors.Async carries the route
+// of its error across, so it starts at the function that asked for the clipboard (rm4n0s/errors R7).
+func TestAsyncReadKeepsTheRouteAcrossTheThread(t *testing.T) {
+	p := newPoster()
+	var got error
+	asyncRead(context.Background(), p.post, failingRead, func(_ int, err error) { got = err })
+	p.next(t)
+	assertTagRoute(t, got, "ClipboardBusy", "asyncRead[...]->asyncRead[...].func5->failingRead.ClipboardBusy")
+}
+
+// failingRead is a read that fails with an error that it makes itself, on the thread that runs it.
+func failingRead() (int, error) { return 0, errors.New(tagClipboardBusy, "busy") }
 
 func TestAsyncReadKeepsTheErrorOfTheRead(t *testing.T) {
 	p := newPoster()

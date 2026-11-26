@@ -214,8 +214,16 @@ func (m *measurer) runApp(ctx context.Context, env []string, limit time.Duration
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	app := &appRun{done: make(chan launchOutcome, 1)}
+	var res winetest.Result
+	// The launch is handed to its goroutine through errors.Async: the route of the launcher's error goes on with the
+	// functions of the measurement that started the app (rm4n0s/errors R7).
+	launch := errors.Async(func() error {
+		var err error
+		res, err = m.d.launcher.Launch(runCtx, m.exe, winetest.RunOptions{Env: env, Timeout: limit})
+		return err
+	})
 	go func() {
-		res, err := m.d.launcher.Launch(runCtx, m.exe, winetest.RunOptions{Env: env, Timeout: limit})
+		err := launch()
 		app.done <- launchOutcome{res, err}
 	}()
 	// stop ends the run and collects the output.

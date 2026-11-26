@@ -296,8 +296,16 @@ func (s *selection) get(ctx context.Context, format string, done func(ui.Clipboa
 		c.reply(func() { done(ui.ClipboardContent{}, err) })
 		return
 	}
+	var data []byte
+	// The read is handed to its goroutine through errors.Async: the route of its error goes on with the functions that
+	// asked for the selection (rm4n0s/errors R7, SPEC §14.4).
+	read := errors.Async(func() error {
+		var rerr error
+		data, rerr = readClipboard(ctx, r)
+		return rerr
+	})
 	go func() {
-		data, rerr := readClipboard(ctx, r)
+		rerr := read()
 		c.p.Post(func() {
 			if rerr != nil {
 				done(ui.ClipboardContent{}, rerr)

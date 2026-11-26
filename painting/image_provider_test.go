@@ -27,6 +27,12 @@ func resolveInto(pt *paintingTester, p ImageProvider, cfg ImageConfiguration) (*
 	return stream, rec
 }
 
+// loadRoute is the path from ImageProviderResolve, which the tests call, to the LoadImage of the provider. The load runs on
+// a goroutine of its own, and errors.Async carries the route across (rm4n0s/errors R7): the route of an error of the load
+// is loadRoute, the LoadImage of the provider, the function it handed off, and what failed.
+const loadRoute = "ImageProviderResolve->safely->ImageProviderResolve.func2->ImageProviderResolveStreamForKey->ImageCache.PutIfAbsent->" +
+	"ImageCache.PutIfAbsent.func1->ImageProviderResolveStreamForKey.func2->"
+
 func requireRoute(t *testing.T, err error, route string) {
 	t.Helper()
 	appErr, ok := errors.FromError(err)
@@ -77,7 +83,7 @@ func TestMemoryImageDecodeFailure(t *testing.T) {
 	pt := newPaintingTester(t)
 	_, rec := resolveInto(pt, NewMemoryImage([]byte("not an image")), ImageConfigurationEmpty)
 	pt.waitFor(t, "the error", func() bool { return len(rec.errs) == 1 })
-	requireRoute(t, rec.errs[0], "ImageDecodeFailed")
+	requireRoute(t, rec.errs[0], loadRoute+"MemoryImage.LoadImage->MemoryImage.LoadImage.func1->PaintingBinding.InstantiateImageCodecWithSize->InstantiateImageCodec.ImageDecodeFailed")
 }
 
 func TestExactAssetImage(t *testing.T) {
@@ -121,7 +127,7 @@ func TestAssetNotFound(t *testing.T) {
 	pt := newPaintingTester(t, PaintingBindingOpts{AssetBundle: services.NewFSAssetBundle(fstest.MapFS{})})
 	_, rec := resolveInto(pt, NewAssetImage("missing.png"), ImageConfigurationEmpty)
 	pt.waitFor(t, "the error", func() bool { return len(rec.errs) == 1 })
-	requireRoute(t, rec.errs[0], "FSAssetBundle.Load.AssetNotFound")
+	requireRoute(t, rec.errs[0], loadRoute+"AssetImage.LoadImage->assetBundleLoadImage->assetBundleLoadImage.func1->FSAssetBundle.Load.AssetNotFound")
 	// The failed image is evicted, so a retry loads again.
 	pt.waitFor(t, "the eviction", func() bool {
 		return !pt.ImageCache().ContainsKey(AssetBundleImageKey{
@@ -209,8 +215,8 @@ func TestFileImage(t *testing.T) {
 		wantRoute string
 	}{
 		{"good", good, ""},
-		{"empty", empty, "ImageFileEmpty"},
-		{"missing", filepath.Join(dir, "missing.png"), "ImageFileReadFailed"},
+		{"empty", empty, loadRoute + "FileImage.LoadImage->FileImage.LoadImage.func1.ImageFileEmpty"},
+		{"missing", filepath.Join(dir, "missing.png"), loadRoute + "FileImage.LoadImage->FileImage.LoadImage.func1.ImageFileReadFailed"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -264,15 +270,15 @@ func TestNetworkImage(t *testing.T) {
 		path  string
 		route string
 	}{
-		{"not found", "/missing.png", "NetworkImageLoadFailed"},
-		{"empty", "/empty.png", "NetworkImageEmpty"},
-		{"not an image", "/bad.png", "ImageDecodeFailed"},
+		{"not found", "/missing.png", "NetworkImage.loadAsync.NetworkImageLoadFailed"},
+		{"empty", "/empty.png", "NetworkImage.loadAsync.NetworkImageEmpty"},
+		{"not an image", "/bad.png", "NetworkImage.loadAsync->PaintingBinding.InstantiateImageCodecWithSize->InstantiateImageCodec.ImageDecodeFailed"},
 	}
 	for _, tt := range failures {
 		t.Run(tt.name, func(t *testing.T) {
 			_, rec := resolveInto(pt, NewNetworkImage(server.URL+tt.path), ImageConfigurationEmpty)
 			pt.waitFor(t, "the error", func() bool { return len(rec.errs) == 1 })
-			requireRoute(t, rec.errs[0], tt.route)
+			requireRoute(t, rec.errs[0], loadRoute+"NetworkImage.LoadImage->NetworkImage.LoadImage.func1->"+tt.route)
 		})
 	}
 	t.Run("unreachable", func(t *testing.T) {
@@ -283,7 +289,7 @@ func TestNetworkImage(t *testing.T) {
 		_ = url
 		_, rec := resolveInto(pt, NewNetworkImage(bad+"/x.png"), ImageConfigurationEmpty)
 		pt.waitFor(t, "the error", func() bool { return len(rec.errs) == 1 })
-		requireRoute(t, rec.errs[0], "NetworkImageRequestFailed")
+		requireRoute(t, rec.errs[0], loadRoute+"NetworkImage.LoadImage->NetworkImage.LoadImage.func1->NetworkImage.loadAsync.NetworkImageRequestFailed")
 	})
 	t.Run("keys", func(t *testing.T) {
 		a, _ := NewNetworkImage("u", NetworkImageOpts{Headers: map[string]string{"a": "1", "b": "2"}}).ObtainKey(pt.PaintingBinding, ImageConfigurationEmpty)

@@ -465,8 +465,16 @@ func (s *futureBuilderState[T]) subscribe() {
 	ctx, cancel := context.WithCancel(s.Lifetime())
 	sub := &subscription{cancel}
 	s.sub = sub
+	// The future is handed to its goroutine through errors.Async: the route of an error that it makes goes on with the
+	// functions that started it, the build of the widget (rm4n0s/errors R7, SPEC §14.4).
+	var data T
+	run := errors.Async(func() error {
+		var err error
+		data, err = f(ctx)
+		return err
+	})
 	s.Go(func(context.Context) {
-		data, err := f(ctx)
+		err := run()
 		s.SetState(func() {
 			if s.sub != sub {
 				return

@@ -274,10 +274,11 @@ func TestShowFileDialogRunsOnAWorker(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(res.Paths, dlg.paths) {
 		t.Errorf("result %+v, err %v", res, err)
 	}
-	// A failure comes back with the route of the call.
+	// A failure comes back with the route of the call: the dialog runs on a worker thread, and errors.Async carries the
+	// route across, so it starts at ShowFileDialog (rm4n0s/errors R7).
 	sh.dialogErr = errors.New(win32.TagCOMCallFailed, "class not registered")
 	_, err = d.ShowFileDialog(t.Context(), platform.FileDialogSpec{})
-	assertTagRoute(t, err, tagFileChooserUnavailable, "Desktop.ShowFileDialog.func1->runFileDialog."+tagFileChooserUnavailable)
+	assertTagRoute(t, err, tagFileChooserUnavailable, "Desktop.ShowFileDialog->Desktop.ShowFileDialog.func1->runFileDialog."+tagFileChooserUnavailable)
 }
 
 func TestShowFileDialogClosesWithItsContext(t *testing.T) {

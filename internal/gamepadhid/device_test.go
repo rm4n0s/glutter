@@ -147,6 +147,24 @@ func TestDeviceThatFailsToStart(t *testing.T) {
 	}
 }
 
+// refusingDriver is a driver whose Start fails with an error that it makes itself, on the goroutine of the device.
+type refusingDriver struct{ stubDriver }
+
+func (d *refusingDriver) Start(IO) (Caps, error) {
+	return Caps{}, errors.New(tagStubStartFailed, "no answer")
+}
+
+// TestDeviceThatFailsToStartKeepsTheRouteOfItsOpener: the driver starts on the goroutine of the device, and
+// errors.Async carries the route of its error across, so it starts at the function that opened the pad
+// (rm4n0s/errors R7).
+func TestDeviceThatFailsToStartKeepsTheRouteOfItsOpener(t *testing.T) {
+	tr, h := newFakeTransport(), newRecHandler()
+	d := startWith(&refusingDriver{}, DeviceInfo{}, tr, h, fastOptions(nil))
+	err := within(t, "a failure", h.failed)
+	d.Close()
+	checkRoute(t, err, "startWith->startWith.func2->refusingDriver.Start."+tagStubStartFailed)
+}
+
 func TestDeviceThatIsUnplugged(t *testing.T) {
 	tr, h, drv := newFakeTransport(), newRecHandler(), &stubDriver{}
 	d := startWith(drv, DeviceInfo{}, tr, h, fastOptions(nil))

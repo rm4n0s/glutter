@@ -54,6 +54,9 @@ type fakeShell struct {
 	posted      []func()
 	// deferPost keeps the posted functions and never runs them: the UI thread does not answer.
 	deferPost bool
+	// executeRefused makes ShellExecute fail with an error that it makes itself, as the real one does: its route then
+	// has the call that reached the worker thread.
+	executeRefused bool
 }
 
 func newFakeShell() *fakeShell { return &fakeShell{now: time.Unix(1000, 0), nextIcon: 100} }
@@ -198,7 +201,29 @@ func (f *fakeShell) ShellExecute(uri string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.executed = append(f.executed, uri)
+	if f.executeRefused {
+		return errors.New(tagOpenURIUnavailable, "no program is associated", "uri", uri)
+	}
 	return f.executeErr
+}
+
+// runPosted runs, on the calling goroutine, the functions that deferPost kept, as they come, until stop is closed: it
+// is the UI thread of a test that needs one that is not the goroutine that posts.
+func (f *fakeShell) runPosted(stop <-chan struct{}) {
+	for {
+		f.mu.Lock()
+		fns := f.posted
+		f.posted = nil
+		f.mu.Unlock()
+		for _, fn := range fns {
+			fn()
+		}
+		select {
+		case <-stop:
+			return
+		case <-time.After(time.Millisecond):
+		}
+	}
 }
 
 func (f *fakeShell) OpenItemDialog(save bool) (itemDialog, error) {

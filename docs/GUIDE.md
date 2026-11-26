@@ -464,6 +464,15 @@ A `Future` is a function that takes a `context.Context` and returns a value and 
 context when it is disposed, and builds with the snapshot on the UI thread. Everything that
 does I/O takes a `ctx` first, as in the rest of Go.
 
+If your app makes its errors with `github.com/rm4n0s/errors`, as Glutter does, the route of an
+error that the future makes and returns goes on with the build that made the `FutureBuilder`,
+as if the future had run there: Glutter hands the future to its goroutine through
+`errors.Async` (rule R7 of the library's guide), as it does for its own goroutines (an image,
+an SVG, the tray, a clipboard read). A test that matches the end of the route passes either
+way. A goroutine that you start yourself, with `State.Go` or a `go` statement, has a stack of
+its own: call `errors.Async` before you start it, and run what it returns in the goroutine,
+when its error goes back to the UI thread.
+
 ## 9. Text input and forms
 
 Flutter:

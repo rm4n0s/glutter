@@ -145,11 +145,22 @@ func (c pasteboard) GetContent(ctx context.Context, kind ui.ClipboardKind, forma
 		return
 	}
 	ch := make(chan pasteResult, 1)
+	// The read and the wait run on goroutines of their own. Both are handed off through errors.Async, so that the route
+	// of their error goes on with the functions that asked for the pasteboard (rm4n0s/errors R7, SPEC §14.4).
+	var content ui.ClipboardContent
+	read := errors.Async(func() error {
+		var err error
+		content, err = readPasteboard(c.back, format)
+		return err
+	})
 	go func() {
-		content, err := readPasteboard(c.back, format)
+		err := read()
 		ch <- pasteResult{content, err}
 	}()
-	go c.await(ctx, ch, done)
+	expired := errors.Async(func() error {
+		return errors.NewErr(tagIOSClipboardUnavailable, ctx.Err()).SetMetadata("reason", "the context ended before the paste prompt was answered")
+	})
+	go c.await(ctx, ch, expired, done)
 }
 
 // pasteResult is what a read of the pasteboard gave.
@@ -158,13 +169,14 @@ type pasteResult struct {
 	err     error
 }
 
-// await waits for the read, or for ctx, and gives the outcome to done on the UI thread.
-func (c pasteboard) await(ctx context.Context, ch <-chan pasteResult, done func(content ui.ClipboardContent, err error)) {
+// await waits for the read, or for ctx, and gives the outcome to done on the UI thread. expired makes the error of a
+// context that ended first.
+func (c pasteboard) await(ctx context.Context, ch <-chan pasteResult, expired func() error, done func(content ui.ClipboardContent, err error)) {
 	select {
 	case r := <-ch:
 		c.post(func() { done(r.content, r.err) })
 	case <-ctx.Done():
-		err := errors.NewErr(tagIOSClipboardUnavailable, ctx.Err()).SetMetadata("reason", "the context ended before the paste prompt was answered")
+		err := expired()
 		c.post(func() { done(ui.ClipboardContent{}, err) })
 	}
 }

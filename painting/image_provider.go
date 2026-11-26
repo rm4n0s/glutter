@@ -298,14 +298,20 @@ func (k AssetBundleImageKey) String() string {
 func assetBundleLoadImage(binding *PaintingBinding, p ImageProvider, key AssetBundleImageKey, decode ImageDecoderCallback) *ImageStreamCompleter {
 	ch := make(chan CodecResult, 1)
 	ctx := binding.Context()
-	go func() {
+	var codec *ui.Codec
+	// The load is handed to its goroutine through errors.Async: the route of its error goes on with the functions that
+	// asked for the image (rm4n0s/errors R7, SPEC §14.4).
+	load := errors.Async(func() error {
 		data, err := key.Bundle.Load(ctx, key.Name)
 		if err != nil {
 			binding.Post(func() { binding.ImageCache().Evict(key) })
-			ch <- CodecResult{Err: err}
-			return
+			return err
 		}
-		codec, err := decode(ctx, data, nil)
+		codec, err = decode(ctx, data, nil)
+		return err
+	})
+	go func() {
+		err := load()
 		ch <- CodecResult{Codec: codec, Err: err}
 	}()
 	return NewMultiFrameImageStreamCompleter(binding, MultiFrameImageStreamCompleterOpts{
@@ -571,9 +577,16 @@ func (n *NetworkImage) LoadImage(binding *PaintingBinding, key any, decode Image
 	chunks := make(chan ImageChunkEvent, 16)
 	codecs := make(chan CodecResult, 1)
 	ctx := binding.Context()
+	var codec *ui.Codec
+	// Handed to the goroutine through errors.Async (R7): the route of a failed request starts at the caller of LoadImage.
+	load := errors.Async(func() error {
+		var err error
+		codec, err = n.loadAsync(ctx, binding.HTTPClient(), chunks, decode)
+		return err
+	})
 	go func() {
 		defer close(chunks)
-		codec, err := n.loadAsync(ctx, binding.HTTPClient(), chunks, decode)
+		err := load()
 		if err != nil {
 			binding.Post(func() { binding.ImageCache().Evict(key) })
 		}
@@ -677,19 +690,22 @@ func (f FileImage) ObtainKey(*PaintingBinding, ImageConfiguration) (any, error) 
 func (f FileImage) LoadImage(binding *PaintingBinding, key any, decode ImageDecoderCallback) *ImageStreamCompleter {
 	ch := make(chan CodecResult, 1)
 	ctx := binding.Context()
-	go func() {
+	var codec *ui.Codec
+	// Handed to the goroutine through errors.Async (R7): the route of a file that cannot be read starts at the caller of
+	// LoadImage.
+	load := errors.Async(func() error {
 		data, err := os.ReadFile(f.Path)
 		if err == nil && len(data) == 0 {
 			binding.Post(func() { binding.ImageCache().Evict(key) })
-			err = errors.New(tagImageFileEmpty, f.Path+" is empty and cannot be loaded as an image.", "path", f.Path)
+			return errors.New(tagImageFileEmpty, f.Path+" is empty and cannot be loaded as an image.", "path", f.Path)
 		} else if err != nil {
-			err = errors.NewErr(tagImageFileReadFailed, err).SetMetadata("path", f.Path)
+			return errors.NewErr(tagImageFileReadFailed, err).SetMetadata("path", f.Path)
 		}
-		if err != nil {
-			ch <- CodecResult{Err: err}
-			return
-		}
-		codec, err := decode(ctx, data, nil)
+		codec, err = decode(ctx, data, nil)
+		return err
+	})
+	go func() {
+		err := load()
 		ch <- CodecResult{Codec: codec, Err: err}
 	}()
 	return NewMultiFrameImageStreamCompleter(binding, MultiFrameImageStreamCompleterOpts{
@@ -757,8 +773,16 @@ func (m *MemoryImage) ObtainKey(*PaintingBinding, ImageConfiguration) (any, erro
 func (m *MemoryImage) LoadImage(binding *PaintingBinding, key any, decode ImageDecoderCallback) *ImageStreamCompleter {
 	ch := make(chan CodecResult, 1)
 	ctx := binding.Context()
+	var codec *ui.Codec
+	// Handed to the goroutine through errors.Async (R7): the route of bytes that do not decode starts at the caller of
+	// LoadImage.
+	load := errors.Async(func() error {
+		var err error
+		codec, err = decode(ctx, m.Bytes, nil)
+		return err
+	})
 	go func() {
-		codec, err := decode(ctx, m.Bytes, nil)
+		err := load()
 		ch <- CodecResult{Codec: codec, Err: err}
 	}()
 	return NewMultiFrameImageStreamCompleter(binding, MultiFrameImageStreamCompleterOpts{

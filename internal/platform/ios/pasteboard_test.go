@@ -187,8 +187,13 @@ func TestPasteDenied(t *testing.T) {
 	pb.GetText(context.Background(), func(_ string, ok bool, err error) { gotOK, got = ok, err })
 	u.next(t)
 	appErr, ok := errors.FromError(got)
-	if !ok || appErr.Tag != tagPasteDenied || !appErr.HasRoute("readPasteboard."+tagPasteDenied) {
+	// The pasteboard is read on a goroutine of its own: errors.Async carries the route across, from the call that asked
+	// for the text (rm4n0s/errors R7).
+	if !ok || appErr.Tag != tagPasteDenied || !appErr.HasRoute("pasteboard.GetText->pasteboard.GetContent->pasteboard.GetContent.func2->readPasteboard."+tagPasteDenied) {
 		t.Errorf("error %v, want PasteDenied", got)
+		if ok {
+			t.Errorf("unexpected failure path: %s", appErr.Route())
+		}
 	}
 	if gotOK {
 		t.Error("a denied paste has text")
@@ -208,7 +213,8 @@ func TestReadWaitsOffTheUIThreadAndEnds(t *testing.T) {
 	u.next(t)
 	<-called
 	appErr, ok := errors.FromError(got)
-	if !ok || appErr.Tag != tagIOSClipboardUnavailable || !appErr.HasRoute("pasteboard.await."+tagIOSClipboardUnavailable) {
+	// The wait runs on a goroutine of its own too, and its error has the route of the call (rm4n0s/errors R7).
+	if !ok || appErr.Tag != tagIOSClipboardUnavailable || !appErr.HasRoute("pasteboard.GetContent->pasteboard.GetContent.func4."+tagIOSClipboardUnavailable) {
 		t.Errorf("error %v (route %v), want IOSClipboardUnavailable", got, appErr.Route())
 	}
 	// The answer that comes later is dropped: nothing more is posted.

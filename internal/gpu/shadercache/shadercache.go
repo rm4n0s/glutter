@@ -9,7 +9,6 @@ package shadercache
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	stdErrors "errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -128,7 +127,7 @@ func (c *Cache) Store(key string, data []byte) {
 	cerr := tmp.Close()
 	if werr != nil || cerr != nil {
 		_ = os.Remove(tmp.Name())
-		c.fail(errors.NewErr(tagShaderCacheWriteFailed, stdErrors.Join(werr, cerr)).SetMetadata("dir", c.dir, "step", "write"))
+		c.fail(errors.NewErr(tagShaderCacheWriteFailed, errors.Join(werr, cerr)).SetMetadata("dir", c.dir, "step", "write"))
 		return
 	}
 	if err := os.Rename(tmp.Name(), c.path(key)); err != nil {

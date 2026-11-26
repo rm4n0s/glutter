@@ -5,6 +5,7 @@ import (
 	"math"
 	"sync"
 
+	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/internal/opts"
 	"github.com/rm4n0s/glutter/painting"
@@ -315,16 +316,28 @@ func (s *svgPictureState) reload() {
 	loadCtx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	gen := s.gen
+	// The load and the parse are handed to the goroutine through errors.Async, so that the route of their error goes on
+	// with the functions that asked for the picture (rm4n0s/errors R7, SPEC §14.4). Only the load is wrapped, not the
+	// cache: the cache gives one error to every state that waits for the same document, and its route is the one of
+	// the state whose goroutine loaded it, set before the cache gives the error to another.
+	var loaded *entry
+	load := errors.Async(func() error {
+		data, err := src.load(loadCtx, env)
+		if err != nil {
+			return err
+		}
+		loaded, err = parseEntry(data, theme)
+		return err
+	})
 	s.Go(func(ctx context.Context) {
 		// The load ends when the state is disposed (ctx) or replaced (cancel).
 		stop := context.AfterFunc(ctx, cancel)
 		defer stop()
-		e, err := cache.load(loadCtx, key, func(ctx context.Context) (*entry, error) {
-			data, err := src.load(ctx, env)
-			if err != nil {
+		e, err := cache.load(loadCtx, key, func(context.Context) (*entry, error) {
+			if err := load(); err != nil {
 				return nil, err
 			}
-			return parseEntry(data, theme)
+			return loaded, nil
 		})
 		if e == nil && err == nil {
 			return

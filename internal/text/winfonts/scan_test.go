@@ -71,12 +71,21 @@ func TestScanKeepsTheOrderAndReportsWhatItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	var failed []string
-	faces := Scan(context.Background(), []string{iconsPath, bad, robotoPath, filepath.Join(dir, "missing.ttf")}, nil, func(p string, err error) { failed = append(failed, p) })
+	var errs []error
+	faces := Scan(context.Background(), []string{iconsPath, bad, robotoPath, filepath.Join(dir, "missing.ttf")}, nil, func(p string, err error) {
+		failed = append(failed, p)
+		errs = append(errs, err)
+	})
 	if len(faces) != 2 || faces[0].Family != "Material Icons" || faces[1].Family != "Roboto" {
 		t.Errorf("faces = %+v", faces)
 	}
 	if len(failed) != 2 || failed[0] != bad {
 		t.Errorf("failed = %v", failed)
+	}
+	// The files are read by the goroutines of Scan: errors.Async carries the route of each error across, so it starts
+	// at Scan and reads as if Scan had called Describe itself (rm4n0s/errors R7).
+	for _, err := range errs {
+		assertRoute(t, err, "WindowsFontUnreadable", "Scan->Scan.func1->Describe.WindowsFontUnreadable")
 	}
 	if got := Scan(context.Background(), nil, nil, nil); got != nil {
 		t.Errorf("no files gave %v", got)

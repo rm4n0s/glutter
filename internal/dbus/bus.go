@@ -134,8 +134,16 @@ func dialWithoutContext(ctx context.Context, dial func(connCtx context.Context) 
 		err  error
 	}
 	done := make(chan result, 1)
+	var conn *godbus.Conn
+	// The dial is handed to its goroutine through errors.Async: the route of its error goes on with the functions that
+	// asked for the connection (rm4n0s/errors R7, SPEC §14.4).
+	connect := errors.Async(func() error {
+		var err error
+		conn, err = dial(context.WithoutCancel(ctx))
+		return err
+	})
 	go func() {
-		conn, err := dial(context.WithoutCancel(ctx))
+		err := connect()
 		done <- result{conn, err}
 	}()
 	select {

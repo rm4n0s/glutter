@@ -128,9 +128,17 @@ func (d *Desktop) ShowFileDialog(ctx context.Context, spec platform.FileDialogSp
 	}
 	var thread atomic.Uint32
 	done := make(chan answer, 1)
+	var res platform.FileDialogResult
+	// Handed to the worker thread through errors.Async (rm4n0s/errors R7): the route of its error starts at
+	// ShowFileDialog.
+	show := errors.Async(func() error {
+		var err error
+		res, err = runFileDialog(d.shell, d.log, spec)
+		return err
+	})
 	d.shell.Worker(func() func() {
 		thread.Store(d.shell.ThreadID())
-		res, err := runFileDialog(d.shell, d.log, spec)
+		err := show()
 		thread.Store(0) // the thread goes on to other calls: nothing is cancelled on it for this one now
 		return func() { done <- answer{res, err} }
 	})

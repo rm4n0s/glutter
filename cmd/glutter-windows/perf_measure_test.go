@@ -42,6 +42,8 @@ type fakeWine struct {
 	noProcess         bool   // the app's process never shows
 	dies              bool   // the background run ends by itself soon after it began
 	launchTag         string // the tag of the error the launcher fails with
+	// backgroundLaunchTag is the tag of the error the launcher fails with for a run in the background only.
+	backgroundLaunchTag string
 }
 
 func newFakeWine() *fakeWine {
@@ -94,6 +96,9 @@ func (f *fakeWine) Launch(ctx context.Context, exe string, o winetest.RunOptions
 		return winetest.Result{}, errors.New(launchTag, "the launcher failed")
 	}
 	env := strings.Join(o.Env, "\n")
+	if f.backgroundLaunchTag != "" && !strings.Contains(env, "GLUTTER_SCREENSHOT=") {
+		return winetest.Result{}, errors.New(f.backgroundLaunchTag, "the launcher failed")
+	}
 	if strings.Contains(env, "GLUTTER_SCREENSHOT=") {
 		// A cold start: the app runs to its first frame and ends.
 		f.mu.Lock()
@@ -376,6 +381,10 @@ func TestMeasurePerfFailuresOfTheBackgroundRun(t *testing.T) {
 		{name: "the process never shows", fault: func(f *fakeWine) { f.noProcess = true }, route: "measurePerf->measurer.idle->measurer.runApp." + tagWindowsPerfNoProcess},
 		{name: "the app ends before its process is seen", fault: func(f *fakeWine) { f.dies = true }, route: "measurePerf->measurer.idle->measurer.runApp." + tagWindowsPerfAppDied},
 		{name: "no first frame in the idle run", fault: func(f *fakeWine) { f.noFrameBackground = true }, route: "measurePerf->measurer.idle." + tagWindowsPerfNoFrame},
+		// The app of a background run is launched on a goroutine of its own: errors.Async carries the route of the
+		// launcher's error across, from the measurement that started the app (rm4n0s/errors R7).
+		{name: "the launcher cannot start the app in the background", fault: func(f *fakeWine) { f.backgroundLaunchTag = winetest.TagWineNotFound },
+			route: "measurePerf->measurer.idle->measurer.runApp->measurer.runApp.func1->fakeWine.Launch." + winetest.TagWineNotFound},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

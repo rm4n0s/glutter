@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	stdErrors "errors"
 	"os/exec"
 	"strings"
 
@@ -37,7 +36,7 @@ func (ExecRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 	switch {
 	case err == nil:
 		return out.Bytes(), 0, nil
-	case stdErrors.As(err, &exit):
+	case errors.As(err, &exit):
 		return out.Bytes(), exit.ExitCode(), nil
 	}
 	return out.Bytes(), -1, errors.NewErr(tagIOSCommandFailed, err).SetMetadata("program", name, "arguments", strings.Join(args, " "))
@@ -165,7 +164,7 @@ func (s Simctl) Pbcopy(ctx context.Context, udid, text string) error {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		var exit *exec.ExitError
-		if stdErrors.As(err, &exit) {
+		if errors.As(err, &exit) {
 			return errors.New(tagIOSSimctlFailed, "simctl says no", "subcommand", "pbcopy", "exit", exit.ExitCode(), "output", string(out))
 		}
 		return errors.NewErr(tagIOSCommandFailed, err).SetMetadata("program", "xcrun", "arguments", "simctl pbcopy")

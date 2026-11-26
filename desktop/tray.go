@@ -206,7 +206,16 @@ func (s *systemTrayState) DidChangeDependencies() {
 		return
 	}
 	s.tray = t
-	s.Go(t.run)
+	// The worker is handed to its goroutine through errors.Async: the route of the error that it reports goes on with
+	// the functions that made the tray (rm4n0s/errors R7, SPEC §14.4).
+	ctx := s.Lifetime()
+	run := errors.Async(func() error { return t.run(ctx) })
+	s.Go(func(context.Context) {
+		defer close(t.done)
+		if err := run(); err != nil {
+			t.fail(err)
+		}
+	})
 }
 
 func (s *systemTrayState) DidUpdateWidget(*SystemTray) {
@@ -449,26 +458,27 @@ func (t *tray) fail(err error) {
 }
 
 // run is the worker of the tray: it makes the icon appear and keeps the bus up to
-// date until ctx ends.
-func (t *tray) run(ctx context.Context) {
-	defer close(t.done)
+// date until ctx ends. It returns the error to report: none when ctx ended, since
+// nobody wants the tray any more. Its caller closes t.done when it has returned.
+func (t *tray) run(ctx context.Context) error {
 	if t.prev != nil {
 		select {
 		case <-t.prev:
 		case <-ctx.Done():
-			return
+			return nil
 		}
 	}
 	bus, err := t.s.connect(ctx, "TrayUnavailable")
 	if err != nil {
 		if ctx.Err() == nil {
-			t.fail(err)
+			return err
 		}
-		return
+		return nil
 	}
 	if err := t.serve(ctx, bus); err != nil && ctx.Err() == nil {
-		t.fail(err)
+		return err
 	}
+	return nil
 }
 
 // serve exports the objects, takes the name, registers with the watcher and then

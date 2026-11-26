@@ -137,6 +137,33 @@ func TestOpenURIGivesTheShellsAnswerBack(t *testing.T) {
 	assertTagRoute(t, d.OpenURI(context.Background(), "glutter-nothing://x"), tagOpenURIUnavailable, "")
 }
 
+// TestOpenURIKeepsTheRouteAcrossTheWorker: ShellExecute runs on a worker thread, and errors.Async carries the route of
+// its error across, so it starts at OpenURI (rm4n0s/errors R7).
+func TestOpenURIKeepsTheRouteAcrossTheWorker(t *testing.T) {
+	d, sh := newTestDesktop()
+	sh.executeRefused = true
+	err := d.OpenURI(context.Background(), "glutter-nothing://x")
+	assertTagRoute(t, err, tagOpenURIUnavailable, "Desktop.OpenURI->Desktop.OpenURI.func1->fakeShell.ShellExecute."+tagOpenURIUnavailable)
+}
+
+// TestShowNotificationKeepsTheRouteAcrossTheUIThread: the balloon is shown on the UI thread while the caller waits on
+// its own goroutine, and errors.Async carries the route of the UI thread's error back to the call (rm4n0s/errors R7).
+func TestShowNotificationKeepsTheRouteAcrossTheUIThread(t *testing.T) {
+	d, sh := newTestDesktop()
+	sh.deferPost = true
+	sh.notifyErr = func(notifyCall) error { return errors.New(win32.TagWin32CallFailed, "no tray") }
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		sh.runPosted(stop)
+	}()
+	_, err := d.ShowNotification(t.Context(), mobileSpec("hi"))
+	close(stop)
+	<-done
+	assertTagRoute(t, err, tagNotificationsUnavailable,
+		"Desktop.ShowNotification->onUI[...]->onUI[...].func1->Desktop.ShowNotification.func1->balloonQueue.show->balloonQueue.display->balloonQueue.ensureOwner."+tagNotificationsUnavailable)
+}
+
 func TestOpenURIEndsWithItsContext(t *testing.T) {
 	d, sh := newTestDesktop()
 	block := make(chan struct{})

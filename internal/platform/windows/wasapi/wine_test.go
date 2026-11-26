@@ -338,16 +338,24 @@ func TestWineBufferFrames(t *testing.T) {
 func TestWineOpenErrors(t *testing.T) {
 	s := newService(t)
 	h := newCounter(48000, 2)
+	// The stream of a device is opened on the thread of the device: errors.Async carries the route of its error across,
+	// so it starts at Open (rm4n0s/errors R7).
+	const onTheThread = "Service.Open->Service.Open.func1->device.start->device.activate->device.endpoint->hresultError."
 	tests := []struct {
-		name string
-		kind platform.AudioKind
-		opts platform.AudioOpenOptions
-		tag  string
+		name  string
+		kind  platform.AudioKind
+		opts  platform.AudioOpenOptions
+		tag   string
+		route string
 	}{
-		{"an ID that no device has", platform.AudioPlayback, platform.AudioOpenOptions{ID: "{0.0.0.00000000}.{00000000-0000-0000-0000-000000000000}"}, platform.TagAudioDeviceOpenFailed},
-		{"a rate that is too low", platform.AudioPlayback, platform.AudioOpenOptions{Format: platform.AudioFormat{Rate: 5, Channels: 2}}, platform.TagAudioFormatUnsupported},
-		{"too many channels", platform.AudioPlayback, platform.AudioOpenOptions{Format: platform.AudioFormat{Rate: 48000, Channels: 9}}, platform.TagAudioFormatUnsupported},
-		{"a capture ID that no device has", platform.AudioCapture, platform.AudioOpenOptions{ID: "nothing"}, platform.TagAudioDeviceOpenFailed},
+		{"an ID that no device has", platform.AudioPlayback, platform.AudioOpenOptions{ID: "{0.0.0.00000000}.{00000000-0000-0000-0000-000000000000}"}, platform.TagAudioDeviceOpenFailed,
+			onTheThread + platform.TagAudioDeviceOpenFailed},
+		{"a rate that is too low", platform.AudioPlayback, platform.AudioOpenOptions{Format: platform.AudioFormat{Rate: 5, Channels: 2}}, platform.TagAudioFormatUnsupported,
+			"Service.Open." + platform.TagAudioFormatUnsupported},
+		{"too many channels", platform.AudioPlayback, platform.AudioOpenOptions{Format: platform.AudioFormat{Rate: 48000, Channels: 9}}, platform.TagAudioFormatUnsupported,
+			"Service.Open." + platform.TagAudioFormatUnsupported},
+		{"a capture ID that no device has", platform.AudioCapture, platform.AudioOpenOptions{ID: "nothing"}, platform.TagAudioDeviceOpenFailed,
+			onTheThread + platform.TagAudioDeviceOpenFailed},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -360,7 +368,9 @@ func TestWineOpenErrors(t *testing.T) {
 			if !ok || appErr.Tag != tt.tag {
 				t.Fatalf("got %v, want tag %s", err, tt.tag)
 			}
-			t.Logf("route %s", appErr.Route())
+			if !appErr.HasRoute(tt.route) {
+				t.Errorf("unexpected failure path: %s", appErr.Route())
+			}
 		})
 	}
 	t.Run("a context that is done", func(t *testing.T) {

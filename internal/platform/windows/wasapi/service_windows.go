@@ -403,7 +403,10 @@ func (s *Service) Open(ctx context.Context, kind platform.AudioKind, opts platfo
 	}
 	s.devices[d] = struct{}{}
 	s.mu.Unlock()
-	go d.run()
+	// The stream is opened on the thread of the device. Its opening is handed to that thread through errors.Async, so
+	// that the route of its error goes on with the functions that opened the device (rm4n0s/errors R7, SPEC §14.4).
+	start := errors.Async(func() error { return d.start() })
+	go d.run(start)
 	select {
 	case err := <-d.ready:
 		if err != nil {

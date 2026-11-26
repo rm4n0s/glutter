@@ -366,8 +366,9 @@ func TestConnectAddress(t *testing.T) {
 	}
 
 	_, err = dbus.ConnectAddress(context.Background(), "unix:path=/nonexistent/socket")
-	// The dial runs on a goroutine of dialWithoutContext, so the route starts there.
-	assertTag(t, err, "dialWithoutContext.func1->ConnectAddress.func1.DBusAddressDialFailed")
+	// The dial runs on a goroutine of dialWithoutContext: errors.Async carries the route across, so it starts at
+	// ConnectAddress and reads as if the dial had been called there (rm4n0s/errors R7).
+	assertTag(t, err, "ConnectAddress->dialWithoutContext->dialWithoutContext.func1->ConnectAddress.func1.DBusAddressDialFailed")
 
 	// A socket that hangs up at once: the authentication fails.
 	socket := filepath.Join(t.TempDir(), "hangup")
@@ -386,7 +387,7 @@ func TestConnectAddress(t *testing.T) {
 		}
 	}()
 	_, err = dbus.ConnectAddress(context.Background(), "unix:path="+socket)
-	assertTag(t, err, "dialWithoutContext.func1->ConnectAddress.func1.DBusAddressAuthFailed")
+	assertTag(t, err, "ConnectAddress->dialWithoutContext->dialWithoutContext.func1->ConnectAddress.func1.DBusAddressAuthFailed")
 }
 
 // TestConnectAddressOutlivesItsContext is Emetos's issue of 2026-11-17: the input method

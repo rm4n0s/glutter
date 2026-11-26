@@ -40,7 +40,7 @@ const modulePath = "github.com/rm4n0s/glutter"
 // The rules, as they are named in a report and in an allow file.
 const (
 	// RuleStdErrors says that the standard library's errors package is not imported under
-	// the name errors; rm4n0s/errors re-exports Is, As and Unwrap (R6).
+	// the name errors; rm4n0s/errors re-exports Is, As, Unwrap and Join (R6).
 	RuleStdErrors = "std-errors"
 	// RuleFmtErrorf says that fmt.Errorf is not called; errors.NewErrf is its counterpart.
 	RuleFmtErrorf = "fmt-errorf"
@@ -73,6 +73,10 @@ const (
 	// RuleErrorToJson says that an error is logged with slog as "err", err, not through
 	// ToJson (guide §5). Tests may call ToJson to replay an error.
 	RuleErrorToJson = "error-tojson"
+	// RuleAsyncInGoroutine says that errors.Async and errors.AsyncRecover are called in the goroutine that hands the
+	// work off, not in the function of the go statement, where they would record the stack of the new goroutine and the
+	// route would lose its parent (R7).
+	RuleAsyncInGoroutine = "async-in-goroutine"
 )
 
 // Violation is one place where the code breaks a rule.
@@ -570,7 +574,7 @@ func (c *checker) checkFile(f *ast.File) {
 	for _, imp := range f.Imports {
 		path, _ := strconv.Unquote(imp.Path.Value)
 		if path == "errors" && (imp.Name == nil || imp.Name.Name == "errors") {
-			c.add(RuleStdErrors, imp.Pos(), "-", "the standard library's errors is imported; import %s, which re-exports Is, As and Unwrap, or alias the standard one (stdErrors)", errorsPath)
+			c.add(RuleStdErrors, imp.Pos(), "-", "the standard library's errors is imported; import %s, which re-exports Is, As, Unwrap and Join, or alias the standard one (stdErrors)", errorsPath)
 		}
 	}
 	for _, d := range f.Decls {
@@ -678,6 +682,26 @@ func (c *checker) walk(root ast.Node, fn string) {
 			c.checkCompare(n, fn)
 		case *ast.SwitchStmt:
 			c.checkSwitch(n, fn)
+		case *ast.GoStmt:
+			c.checkGo(n, fn)
+		}
+		return true
+	})
+}
+
+// checkGo reports a call of errors.Async or errors.AsyncRecover in the function literal that a go statement starts: it
+// runs in the new goroutine. The arguments of the go statement are not checked: they are made by the goroutine that
+// starts the new one, which is where Async belongs.
+func (c *checker) checkGo(g *ast.GoStmt, fn string) {
+	lit, ok := g.Call.Fun.(*ast.FuncLit)
+	if !ok {
+		return
+	}
+	ast.Inspect(lit.Body, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok {
+			if name := c.errorsFunc(call); name == "Async" || name == "AsyncRecover" {
+				c.add(RuleAsyncInGoroutine, call.Pos(), fn, "errors.%s is called inside the goroutine; call it before the go statement and run its result in the goroutine", name)
+			}
 		}
 		return true
 	})
