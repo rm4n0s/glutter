@@ -1314,3 +1314,20 @@ Step 56.1 (Glutter 1.17.11) gives an app on macOS the links and the files that t
 5. With Theatro built with Glutter 1.17.11 and `-url-scheme magnet -doc-type "BitTorrent file=torrent"`: in the Finder, Get Info of a `.torrent` file, "Open with" Theatro, "Change All"; a double click on a `.torrent` file then adds it to Theatro, and a click on a magnet link in a browser, after the browser's question, does too.
 
 Answers: _(not yet recorded)_
+
+## 58.1 A motion that does not move the pointer makes no hover
+
+Step 58.1 (Glutter 1.17.12) drops a hover for a motion of the mouse that did not move it, as Flutter's engine does. GNOME's mutter sends a `wl_pointer.motion` at the same place while the window under a mouse that stays redraws, so Theatro's player (a video that redraws all the time) got a stream of hovers with a delta of 0 and never hid its bars and its pointer. The same fault was in the Windows (`WM_MOUSEMOVE`, which Windows also sends when a window under the pointer changes), macOS and web backends; X11 already dropped such motions, and Android and iOS run the engine's converter. On the Linux machine the reproduction (`internal/issues`, `still-hover`) ran through the fake Wayland compositor, a real X server (XTest), `WM_MOUSEMOVE` to a window under Wine, hover moves of a mouse on the Android emulator and `pointermove` events in Chromium and Firefox; each failed without the fix and passes with it. macOS (AppKit) and iOS (the Simulator) are step 59.1, the Mac's. What only a real desktop shows (from the module root, with Glutter 1.17.12 in Theatro):
+
+**On GNOME (Wayland)**
+
+1. Play a video in Theatro, move the mouse over the player and leave it still. The bars and the pointer hide after their delay (SPEC §11.1 of Theatro), as they do on KDE, and come back when the mouse moves. When they do not hide, run Theatro with `WAYLAND_DEBUG=client 2>&1 | grep wl_pointer.motion` for a few seconds with the mouse still and send what it prints with the version of GNOME.
+
+**On a Windows PC** (the tests passed under Wine)
+
+2. `go test -run HoversOnlyWhenThePointerMoves -v ./internal/platform/windows ./internal/issues`: it should pass. Then play a video in Theatro (or run any app with an animation under the mouse), leave the mouse still over it, and check that the bars and the pointer hide. When the test fails, send its whole output; when the bars do not hide, send the version of Windows and whether a second monitor or a remote desktop is in use.
+
+Answers:
+- Mac (step 59.1): _(not yet recorded)_
+- Theatro on GNOME: _(not yet recorded)_
+- Windows PC: _(not yet recorded)_

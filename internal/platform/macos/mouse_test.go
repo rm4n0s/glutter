@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -468,5 +469,34 @@ func TestCancelViewLiftsAndRemovesEveryPointer(t *testing.T) {
 	m.cancelView(1, 20*time.Millisecond)
 	if d := m.take(); len(d) != 0 {
 		t.Error("a second cancel made data")
+	}
+}
+
+// stillHoverMachine runs the reproduction of internal/issues on the state machine: an enter is
+// mouseEntered: and a motion mouseMoved:.
+type stillHoverMachine struct{ m *pointerMachine }
+
+func (p stillHoverMachine) Enter(x, y float64)     { p.m.entered(at(x, y, 0)) }
+func (p stillHoverMachine) Motion(x, y float64)    { p.m.moved(at(x, y, 1)) }
+func (p stillHoverMachine) Take() []ui.PointerData { return p.m.takeForFramework() }
+
+// TestMouseMachineHoversOnlyWhenThePointerMoves is the issue "A hover for a motion event that did not
+// move the pointer" (step 58.1) on what the macOS platform gives the framework (plain Go, run on any
+// machine; the AppKit test is the Mac's, step 59.1): a mouseMoved: at the place the pointer has makes
+// no hover, and a move with no enter first makes the add and no hover at its place.
+func TestMouseMachineHoversOnlyWhenThePointerMoves(t *testing.T) {
+	m := newPointerMachine()
+	rep := issues.RunStillHover(stillHoverMachine{m}, 1)
+	for _, p := range rep.Problems() {
+		t.Error(p)
+	}
+	if len(rep.Hovers) != 2 {
+		t.Errorf("%d hovers, want 2: one at each place after the first: %+v", len(rep.Hovers), rep.Hovers)
+	}
+	m.exited(at(91, 60, 2))
+	m.take()
+	m.moved(at(5, 5, 3))
+	if got := summaries(m.takeForFramework()); !slices.Equal(got, []summary{{change: add}}) {
+		t.Errorf("a move with no enter = %+v, want the add alone", got)
 	}
 }

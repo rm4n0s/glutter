@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/glutter/internal/platform"
+	"github.com/rm4n0s/glutter/internal/platform/pointerconv"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -230,12 +231,17 @@ func readCoalesced(ev, rect js.Value, e *PointerEvent) {
 func (p *Platform) canvasRect() js.Value { return p.win.canvas.Call("getBoundingClientRect") }
 
 // postPointer queues the conversion of a pointer event for the UI goroutine.
+//
+// Deviation: the hovers that do not move their pointer (a pointermove at the place the pointer has,
+// and the first one of a pointer, at the place of its add) are dropped (pointerconv.DropStillHovers),
+// as the engine's PointerDataPacketConverter drops them on the other platforms; Flutter's web engine
+// sends them (SPEC §12.10, step 58.1).
 func (p *Platform) postPointer(convert func(in *PointerInput, dpr float64) []ui.PointerData) {
 	p.q.post(func() {
 		if p.handler == nil || p.in.pointers == nil || p.win == nil {
 			return
 		}
-		if data := convert(p.in.pointers, p.viewDPR()); len(data) > 0 {
+		if data := pointerconv.DropStillHovers(convert(p.in.pointers, p.viewDPR())); len(data) > 0 {
 			p.handler.OnPointer(data)
 		}
 	})

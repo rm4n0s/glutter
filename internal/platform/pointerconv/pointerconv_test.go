@@ -1,6 +1,7 @@
 package pointerconv
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/rm4n0s/glutter/ui"
@@ -520,5 +521,40 @@ func TestPointerConverterIsNotGlobal(t *testing.T) {
 	got := b.Convert([]ui.PointerData{pcTouch(pcDown, 0, 0, 0, 1)})
 	if len(got) != 2 || got[1].PointerIdentifier != 1 {
 		t.Fatalf("second converter gave %v, want its own first identifier 1", got)
+	}
+}
+
+func TestDropStillHovers(t *testing.T) {
+	mouse := func(change ui.PointerChange, x, dx float64) ui.PointerData {
+		return ui.PointerData{Change: change, Kind: ui.PointerDeviceKindMouse, PhysicalX: x, PhysicalY: 5, PhysicalDeltaX: dx}
+	}
+	scroll := mouse(ui.PointerChangeHover, 10, 0)
+	scroll.SignalKind = ui.PointerSignalKindScroll
+	dy := mouse(ui.PointerChangeHover, 10, 0)
+	dy.PhysicalDeltaY = -2
+	tests := []struct {
+		name string
+		in   []ui.PointerData
+		want []ui.PointerData
+	}{
+		{"nothing", nil, nil},
+		{"the hover after an add, at its place", []ui.PointerData{mouse(ui.PointerChangeAdd, 10, 0), mouse(ui.PointerChangeHover, 10, 0)},
+			[]ui.PointerData{mouse(ui.PointerChangeAdd, 10, 0)}},
+		{"hovers that did not move among ones that did", []ui.PointerData{
+			mouse(ui.PointerChangeHover, 12, 2), mouse(ui.PointerChangeHover, 12, 0), mouse(ui.PointerChangeHover, 12, 0), mouse(ui.PointerChangeHover, 11, -1),
+		}, []ui.PointerData{mouse(ui.PointerChangeHover, 12, 2), mouse(ui.PointerChangeHover, 11, -1)}},
+		{"a vertical move", []ui.PointerData{dy}, []ui.PointerData{dy}},
+		{"a scroll signal where the pointer is", []ui.PointerData{scroll}, []ui.PointerData{scroll}},
+		{"a drag that did not move, and the down and up", []ui.PointerData{
+			mouse(ui.PointerChangeDown, 10, 0), mouse(ui.PointerChangeMove, 10, 0), mouse(ui.PointerChangeUp, 10, 0), mouse(ui.PointerChangeRemove, 10, 0),
+		}, []ui.PointerData{mouse(ui.PointerChangeDown, 10, 0), mouse(ui.PointerChangeMove, 10, 0), mouse(ui.PointerChangeUp, 10, 0), mouse(ui.PointerChangeRemove, 10, 0)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := DropStillHovers(append([]ui.PointerData(nil), tt.in...))
+			if !reflect.DeepEqual(got, tt.want) && (len(got) != 0 || len(tt.want) != 0) {
+				t.Errorf("got  %+v\nwant %+v", got, tt.want)
+			}
+		})
 	}
 }

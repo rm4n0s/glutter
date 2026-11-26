@@ -232,7 +232,7 @@ func (w *window) proximityEvent(ev objc.ID) {
 
 // flushPointers hands the data that the state machine made to the handler.
 func (p *Platform) flushPointers() {
-	data := p.ptr.take()
+	data := p.ptr.takeForFramework()
 	if len(data) > 0 && p.handler != nil {
 		p.handler.OnPointer(data)
 	}

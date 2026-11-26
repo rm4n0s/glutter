@@ -59,6 +59,8 @@ func (nativeHost) Inject(e DevEvent) {
 		kind = 8
 	case "relmove":
 		kind = 9
+	case "hover":
+		kind = 10
 	default:
 		return
 	}

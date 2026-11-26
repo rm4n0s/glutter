@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/platform"
 	"github.com/rm4n0s/glutter/internal/platform/linux/dl"
 	"github.com/rm4n0s/glutter/internal/platform/linux/input"
@@ -847,5 +848,42 @@ func TestPointerIdentifiersAreNewAtEachDownThroughTheCompositor(t *testing.T) {
 	ids, _ = downs(e.batches())
 	if len(ids) != 1 || ids[0] <= last {
 		t.Errorf("after the pointer came back: identifiers %v, want one above %d", ids, last)
+	}
+}
+
+// stillHoverCompositor runs the reproduction of internal/issues through a compositor: each enter and
+// motion is a wl_pointer event of its own frame, as GNOME's mutter sends a motion while the window
+// under a pointer that does not move redraws.
+type stillHoverCompositor struct{ e *keyEnv }
+
+func (p stillHoverCompositor) Enter(x, y float64) {
+	p.e.srv.PointerEnter(p.e.surface, x, y)
+	p.e.srv.PointerFrame()
+}
+
+func (p stillHoverCompositor) Motion(x, y float64) {
+	p.e.srv.PointerMotion(x, y)
+	p.e.srv.PointerFrame()
+}
+
+func (p stillHoverCompositor) Take() []ui.PointerData {
+	var out []ui.PointerData
+	for _, b := range p.e.batches() {
+		out = append(out, b...)
+	}
+	return out
+}
+
+// TestWaylandHoversOnlyWhenThePointerMoves is the issue "A hover for a motion event that did not move
+// the pointer" (step 58.1) on Wayland: a wl_pointer.motion to the place the pointer has makes no
+// hover.
+func TestWaylandHoversOnlyWhenThePointerMoves(t *testing.T) {
+	e := startInput(t, capPointer, 0)
+	rep := issues.RunStillHover(stillHoverCompositor{e}, 1)
+	for _, p := range rep.Problems() {
+		t.Error(p)
+	}
+	if t.Failed() {
+		t.Logf("the report:\n%s", strings.Join(rep.Lines(), "\n"))
 	}
 }

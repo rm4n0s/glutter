@@ -5,8 +5,10 @@ package input
 import (
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -478,5 +480,52 @@ func TestRelativeMotionOutsideAWindowIsIgnored(t *testing.T) {
 	b.Relative(1, 1)
 	if got := b.Frame(); len(got) != 0 {
 		t.Errorf("events outside a window: %v", got)
+	}
+}
+
+func TestPointerMotionWhereThePointerIsMakesNoHover(t *testing.T) {
+	b := NewPointerBatcher(tickingClock(), nil)
+	b.Scale = 2
+	b.Enter(0, 10, 10)
+	b.Motion(10, 10) // a compositor's motion while the window under the pointer redraws
+	b.Motion(11, 10)
+	b.Motion(11, 10)
+	b.Button(0x110, true)
+	b.Motion(11, 10) // a drag that stays where it is is still a move, as Flutter's engine sends it
+	b.Button(0x110, false)
+	b.Motion(11, 10)
+	b.Motion(11, 12)
+	eventsEqual(t, b.Frame(), []ev{
+		{change: ui.PointerChangeAdd, kind: mouse, x: 20, y: 20},
+		{change: ui.PointerChangeHover, kind: mouse, x: 22, y: 20, dx: 2},
+		{change: ui.PointerChangeDown, kind: mouse, x: 22, y: 20, buttons: 1},
+		{change: ui.PointerChangeMove, kind: mouse, x: 22, y: 20, buttons: 1},
+		{change: ui.PointerChangeUp, kind: mouse, x: 22, y: 20},
+		{change: ui.PointerChangeHover, kind: mouse, x: 22, y: 24, dy: 4},
+	})
+}
+
+// stillHoverBatcher runs the reproduction of internal/issues on a PointerBatcher, which the
+// Wayland and the X11 backends share.
+type stillHoverBatcher struct{ b *PointerBatcher }
+
+func (p stillHoverBatcher) Enter(x, y float64)     { p.b.Enter(0, x, y) }
+func (p stillHoverBatcher) Motion(x, y float64)    { p.b.Motion(x, y) }
+func (p stillHoverBatcher) Take() []ui.PointerData { return p.b.Frame() }
+
+// TestLinuxHoversOnlyWhenThePointerMoves is the issue "A hover for a motion event that did not move
+// the pointer" (step 58.1) on the batcher of the Linux desktop: a motion to the place the pointer
+// has makes no hover.
+func TestLinuxHoversOnlyWhenThePointerMoves(t *testing.T) {
+	for _, scale := range []float64{1, 1.5} {
+		b := NewPointerBatcher(tickingClock(), nil)
+		b.Scale = scale
+		rep := issues.RunStillHover(stillHoverBatcher{b}, scale)
+		for _, p := range rep.Problems() {
+			t.Errorf("scale %g: %s", scale, p)
+		}
+		if t.Failed() {
+			t.Logf("scale %g:\n%s", scale, strings.Join(rep.Lines(), "\n"))
+		}
 	}
 }

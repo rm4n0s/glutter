@@ -4,6 +4,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/rm4n0s/glutter/internal/platform/pointerconv"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -107,6 +108,14 @@ func (t *pointerTracker) take() []ui.PointerData {
 	out := t.out
 	t.out = nil
 	return out
+}
+
+// takeForFramework is take without the hovers that do not move their pointer (Windows sends
+// WM_MOUSEMOVE when a window under a pointer that does not move changes, and the first move of a
+// pointer is at the place of its add), which the engine's PointerDataPacketConverter drops after
+// Flutter's embedder (pointerconv.DropStillHovers): what the platform gives the framework.
+func (t *pointerTracker) takeForFramework() []ui.PointerData {
+	return pointerconv.DropStillHovers(t.take())
 }
 
 // stateFor finds or makes the state of the pointer for a view. A pointer that is in another view

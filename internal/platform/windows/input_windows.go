@@ -26,7 +26,7 @@ func (w *window) initInput() {
 
 // flushPointers sends the data the translators made as one batch.
 func (w *window) flushPointers() {
-	data := w.p.pointers.take()
+	data := w.p.pointers.takeForFramework()
 	if len(data) == 0 || w.p.handler == nil {
 		return
 	}

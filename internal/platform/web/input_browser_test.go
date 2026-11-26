@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/webtest"
 	"github.com/rm4n0s/glutter/internal/webtool"
 	"github.com/rm4n0s/glutter/ui"
@@ -74,6 +76,23 @@ type observations struct {
 	MenuDisabledFlag       bool     `json:"menuDisabledFlag"`
 	LockTag                string   `json:"lockTag"`
 	LockHeld               bool     `json:"lockHeld"`
+	StillHover             []string `json:"stillHover"`
+}
+
+// awaitInputs runs inputtest in the browser and returns what it posted.
+func awaitInputs(t *testing.T, dir string, b webtest.Browser) observations {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	res, err := webtest.Await(ctx, webtest.ShotOptions{Dir: dir, Browser: b, Width: 480, Height: 640}, "inputs")
+	if err != nil {
+		t.Fatalf("Await in %s: %v", b, err)
+	}
+	var o observations
+	if err := json.Unmarshal(res.Data, &o); err != nil {
+		t.Fatalf("the result is not the observations: %v\n%s", err, res.Data)
+	}
+	return o
 }
 
 // TestBrowserInput: in Chromium and Firefox, synthetic pointer, key, wheel and contextmenu events
@@ -85,16 +104,7 @@ type observations struct {
 func TestBrowserInput(t *testing.T) {
 	dir := inputSite(t)
 	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-		defer cancel()
-		res, err := webtest.Await(ctx, webtest.ShotOptions{Dir: dir, Browser: b, Width: 480, Height: 640}, "inputs")
-		if err != nil {
-			t.Fatalf("Await in %s: %v", b, err)
-		}
-		var o observations
-		if err := json.Unmarshal(res.Data, &o); err != nil {
-			t.Fatalf("the result is not the observations: %v\n%s", err, res.Data)
-		}
+		o := awaitInputs(t, dir, b)
 		t.Logf("%+v", o)
 		check := func(name string, got, want any) {
 			t.Helper()
@@ -126,6 +136,27 @@ func TestBrowserInput(t *testing.T) {
 		check("default of the contextmenu event prevented once enabled", o.MenuEnabledPrevented, false)
 		check("tag of the pointer lock asked for without a user activation", o.LockTag, ui.TagPointerLockDenied)
 		check("pointer lock held after the refusal", o.LockHeld, false)
+	})
+}
+
+// TestBrowserHoversOnlyWhenThePointerMoves is the issue "A hover for a motion event that did not move
+// the pointer" (step 58.1) in Chromium and Firefox: inputtest moves the mouse with pointermove events
+// to the places of the reproduction, most of them where it already is, and the framework sees a hover
+// only where the mouse went.
+func TestBrowserHoversOnlyWhenThePointerMoves(t *testing.T) {
+	dir := inputSite(t)
+	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
+		o := awaitInputs(t, dir, b)
+		rep, err := issues.ParseStillHover(o.StillHover)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range rep.Problems() {
+			t.Error(p)
+		}
+		if t.Failed() {
+			t.Logf("the report:\n%s", strings.Join(o.StillHover, "\n"))
+		}
 	})
 }
 

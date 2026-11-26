@@ -23,6 +23,7 @@ func TestParseDevEvents(t *testing.T) {
 		{"compose", "compose:k,ka,か", []DevEvent{{Kind: "compose", Key: "k,ka,か"}}},
 		{"action", "action:enter", []DevEvent{{Kind: "action"}}},
 		{"relmove", "relmove:3,-4.5", []DevEvent{{Kind: "relmove", X1: 3, Y1: -4.5}}},
+		{"hover", "hover:40,30.5", []DevEvent{{Kind: "hover", X1: 40, Y1: 30.5}}},
 		{"a11y click", "a11y:click,Add", []DevEvent{{Kind: "a11y", Key: "click", Label: "Add"}}},
 		{"a11y label with commas and spaces", "a11y:scrollforward,Item 1, of many", []DevEvent{{Kind: "a11y", Key: "scrollforward", Label: "Item 1, of many"}}},
 		{"back pop", "back:pop", []DevEvent{{Kind: "back", Key: "pop"}}},
@@ -48,7 +49,7 @@ func TestParseDevEventsErrors(t *testing.T) {
 	for _, script := range []string{
 		"tap", "tap:1", "tap:a,b", "tap:1,2,3", "swipe:1,2,3,4", "swipe:1,2,3,4,0", "swipe:1,2,3,4,1.5", "wait:soon", "wait:-1s", "text:", "compose:", "action:done", "action", "back:", "back:swipe", "compose:a,,b",
 		"key:ENTER", "key:KEYCODE_enter", "key:", "back:start", "tap:1,2;nope",
-		"relmove:", "relmove:1", "relmove:1,2,3", "relmove:a,b", "a11y:", "a11y:click", "a11y:click,", "a11y:tap,Add", "a11y:,Add", "a11y:CLICK,Add",
+		"relmove:", "relmove:1", "relmove:1,2,3", "relmove:a,b", "hover:", "hover:1", "hover:1,2,3", "hover:a,b", "a11y:", "a11y:click", "a11y:click,", "a11y:tap,Add", "a11y:,Add", "a11y:CLICK,Add",
 	} {
 		t.Run(script, func(t *testing.T) {
 			_, err := ParseDevEvents(script)

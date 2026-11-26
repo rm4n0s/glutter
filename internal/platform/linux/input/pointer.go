@@ -264,7 +264,10 @@ func (b *PointerBatcher) Relative(dx, dy float64) {
 	b.emit(d)
 }
 
-// Motion reports the pointer at a new position, in logical pixels.
+// Motion reports the pointer at a new position, in logical pixels. A motion to the position the pointer
+// already has makes no hover: a compositor sends such motions while the window under a pointer that does
+// not move redraws (GNOME's mutter does), and Flutter's engine drops a hover whose position did not
+// change (PointerDataPacketConverter). A move (a button is down) is sent, as the engine sends it.
 //
 // Flutter: no counterpart
 func (b *PointerBatcher) Motion(x, y float64) {
@@ -275,6 +278,9 @@ func (b *PointerBatcher) Motion(x, y float64) {
 	change := ui.PointerChangeHover
 	if b.buttons != 0 {
 		change = ui.PointerChangeMove
+	}
+	if change == ui.PointerChangeHover && nx == b.x && ny == b.y {
+		return
 	}
 	d := b.base(change)
 	d.PhysicalX, d.PhysicalY = nx, ny

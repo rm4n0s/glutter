@@ -379,3 +379,24 @@ func (c *Converter) updatePointerIdentifier(d *ui.PointerData, state *pointerSta
 	}
 	d.PointerIdentifier = state.pointerIdentifier
 }
+
+// DropStillHovers removes from data, in place, the hovers that do not move their pointer: a hover
+// that is no signal and has no delta. It is the rule of the engine's converter that drops a hover
+// whose place did not change, for the platforms that make the deltas of their pointer data
+// themselves and so do not run the data through a Converter (Windows, macOS, the web): Windows sends
+// WM_MOUSEMOVE when a window under a pointer that does not move changes, and their first move of a
+// pointer is at the place of the add they synthesize before it. The motion of a locked pointer is a
+// hover with a delta at a place that does not change, and is kept.
+//
+// Flutter: lib/ui/window/pointer_data_packet_converter.cc PointerDataPacketConverter.ConvertPointerData (kHover)
+func DropStillHovers(data []ui.PointerData) []ui.PointerData {
+	out := data[:0]
+	for _, d := range data {
+		if d.Change == ui.PointerChangeHover && (d.SignalKind == ui.PointerSignalKindUnspecified || d.SignalKind == ui.PointerSignalKindNone) &&
+			d.PhysicalDeltaX == 0 && d.PhysicalDeltaY == 0 {
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
+}

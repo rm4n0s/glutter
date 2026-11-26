@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/rm4n0s/errors"
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	"github.com/rm4n0s/glutter/internal/platform/web/synthetic"
 	m "github.com/rm4n0s/glutter/material"
@@ -61,6 +62,10 @@ type observations struct {
 	// events of the test are synthetic), and LockHeld whether the app thinks it holds the lock.
 	LockTag  string `json:"lockTag"`
 	LockHeld bool   `json:"lockHeld"`
+	// StillHover is the report of the reproduction of the issue of step 58.1 (internal/issues,
+	// still-hover), as its lines: the hovers the framework saw while pointermove events moved the
+	// mouse to the places of the reproduction, most of them where it already was.
+	StillHover []string `json:"stillHover"`
 }
 
 func main() {
@@ -159,6 +164,21 @@ func observe(p *probe) observations {
 	o.MenuDisabledPrevented = synthetic.DispatchContextMenu(canvas, listX, listY)
 	p.onUI(func() { p.binding.BrowserContextMenu().EnableContextMenu() })
 	o.MenuEnabledPrevented = synthetic.DispatchContextMenu(canvas, listX, listY)
+
+	// The reproduction of the issue "A hover for a motion event that did not move the pointer": the
+	// mouse goes to the first place and then to each place, most of them where it already is.
+	p.onUI(func() { p.recordHovers = true })
+	steps := issues.StillHoverSteps()
+	synthetic.DispatchPointer(canvas, synthetic.Pointer{Type: "pointermove", X: steps[0].X, Y: steps[0].Y})
+	for _, st := range steps {
+		time.Sleep(20 * time.Millisecond)
+		synthetic.DispatchPointer(canvas, synthetic.Pointer{Type: "pointermove", X: st.X, Y: st.Y})
+	}
+	settle()
+	p.onUI(func() {
+		p.recordHovers = false
+		o.StillHover = p.hovers.Lines()
+	})
 
 	// The pointer lock needs a click or a key of the user, which synthetic events are not: the browser
 	// would refuse, and the platform says so at once.

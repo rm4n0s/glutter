@@ -322,6 +322,23 @@ public class GlutterView extends SurfaceView implements SurfaceHolder.Callback {
   /** The dev events script (main thread): a synthetic tap, swipe or key, dispatched like real input. */
   void inject(int kind, float x1, float y1, float x2, float y2, int ms, String key) {
     final Handler handler = getHandler() != null ? getHandler() : new Handler(Looper.getMainLooper());
+    if (kind == 10) {
+      // The mouse over the view with no button down, as the system sends it: a hover move of a mouse,
+      // dispatched as a generic motion event.
+      long now = SystemClock.uptimeMillis();
+      MotionEvent.PointerProperties props = new MotionEvent.PointerProperties();
+      props.id = 0;
+      props.toolType = MotionEvent.TOOL_TYPE_MOUSE;
+      MotionEvent.PointerCoords coords = new MotionEvent.PointerCoords();
+      coords.x = x1;
+      coords.y = y1;
+      MotionEvent hover = MotionEvent.obtain(
+          now, now, MotionEvent.ACTION_HOVER_MOVE, 1, new MotionEvent.PointerProperties[] {props},
+          new MotionEvent.PointerCoords[] {coords}, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0);
+      dispatchGenericMotionEvent(hover);
+      hover.recycle();
+      return;
+    }
     if (kind == 9) {
       // A motion of the mouse while the pointer is captured, as the relative mouse of a device makes it.
       if (!hasPointerCapture()) {

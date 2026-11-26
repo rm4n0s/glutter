@@ -4,6 +4,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/rm4n0s/glutter/internal/platform/pointerconv"
 	"github.com/rm4n0s/glutter/ui"
 )
 
@@ -148,6 +149,14 @@ type pointerMachine struct {
 
 func newPointerMachine() *pointerMachine {
 	return &pointerMachine{states: map[pointerKey]*pointerState{}}
+}
+
+// takeForFramework is take without the hovers that do not move their pointer (the first move of a
+// pointer is at the place of its add, and AppKit may send a mouseMoved: that did not move it), which
+// the engine's PointerDataPacketConverter drops after Flutter's embedder (pointerconv.DropStillHovers):
+// what the platform gives the framework.
+func (m *pointerMachine) takeForFramework() []ui.PointerData {
+	return pointerconv.DropStillHovers(m.take())
 }
 
 // take returns the data made since the last call, in order.

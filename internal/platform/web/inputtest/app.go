@@ -7,6 +7,7 @@ import (
 
 	"github.com/rm4n0s/glutter/foundation"
 	"github.com/rm4n0s/glutter/gestures"
+	"github.com/rm4n0s/glutter/internal/issues"
 	m "github.com/rm4n0s/glutter/material"
 	"github.com/rm4n0s/glutter/services"
 	"github.com/rm4n0s/glutter/ui"
@@ -41,6 +42,10 @@ type probe struct {
 	keyCount int
 	offset   float64
 	ctrl     *m.ScrollControllerBase
+	// recordHovers says whether the hovers of the mouse are recorded into hovers (the reproduction of
+	// the issue of step 58.1).
+	recordHovers bool
+	hovers       issues.StillHoverReport
 }
 
 func newProbe() *probe { return &probe{ready: make(chan struct{})} }
@@ -119,6 +124,13 @@ func (s *inputPageState) Build(bc m.BuildContext) m.Widget {
 		Behavior: m.HitTestBehaviorTranslucent,
 		OnPointerDown: func(e *gestures.PointerDownEvent) {
 			p.downs = append(p.downs, strconv.FormatFloat(e.Position().Dx, 'f', 0, 64)+","+strconv.FormatFloat(e.Position().Dy, 'f', 0, 64))
+		},
+		OnPointerHover: func(e *gestures.PointerHoverEvent) {
+			if p.recordHovers && e.Kind() == ui.PointerDeviceKindMouse {
+				p.hovers.Hovers = append(p.hovers.Hovers, issues.StillHoverEvent{
+					X: e.Position().Dx, Y: e.Position().Dy, DX: e.Delta().Dx, DY: e.Delta().Dy,
+				})
+			}
 		},
 	})
 	return m.NewScaffold(m.ScaffoldOpts{
