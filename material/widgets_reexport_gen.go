@@ -11632,6 +11632,11 @@ type TableRow = widgets.TableRow
 // Flutter: widgets.dart TableRowOpts
 type TableRowOpts = widgets.TableRowOpts
 
+// TagGoErrUndelivered is widgets.TagGoErrUndelivered.
+//
+// Flutter: widgets.dart TagGoErrUndelivered
+const TagGoErrUndelivered = widgets.TagGoErrUndelivered
+
 // TagPointerLockDenied is widgets.TagPointerLockDenied.
 //
 // Flutter: widgets.dart TagPointerLockDenied
@@ -14501,6 +14506,13 @@ type DecorationImageSource = painting.DecorationImageSource
 // Flutter: painting.dart DecorationLerp
 func DecorationLerp(a painting.Decoration, b painting.Decoration, t float64) painting.Decoration {
 	return painting.DecorationLerp(a, b, t)
+}
+
+// DecorationsEqual is painting.DecorationsEqual.
+//
+// Flutter: painting.dart DecorationsEqual
+func DecorationsEqual(a painting.Decoration, b painting.Decoration) bool {
+	return painting.DecorationsEqual(a, b)
 }
 
 // DefaultFontSize is painting.DefaultFontSize.

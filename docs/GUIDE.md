@@ -506,7 +506,50 @@ The route of the error reads
 `editorState.save->StateOf[...].GoErr->StateOf[...].GoErr.func1->editorState.save.func1->...->Tag`:
 `GoErr` and its function literal are what `Async` leaves between the caller and your work. A panic in
 the work or in the function is recovered and reported as `CallbackPanicked`, like a panic in
-`State.Go`; the function is not called after the state is disposed. For a goroutine that no
+`State.Go`; the function is not called after the state is disposed.
+
+An error that the function cannot get is not lost (1.17.15). When you pass `nil` as the
+function, or when the state was disposed before the work returned, a non-nil error of the work
+goes to the error reporter of the app (`RunAppOpts.ErrorReporter`, which logs by default), once,
+with the tag `m.TagGoErrUndelivered`: its `OriginalErr` is your error, and its metadata has
+`state`, `reason` (`"no callback"` or `"disposed"`), and your error's `originalTag` and
+`originalRoute`. A screen that was closed while its work ran is not a reason to report the work
+that you cancelled: an error that is `context.Canceled` (or the cause of the context) is not
+reported, however it is wrapped. The report is no panic, so a reporter that ends the program on a
+crash tells it by the tag:
+
+```go
+package main
+
+import (
+	"log/slog"
+
+	"github.com/rm4n0s/errors"
+	m "github.com/rm4n0s/glutter/material"
+)
+
+func main() {
+	if err := m.RunApp(m.NewText("hello"), m.RunAppOpts{ErrorReporter: report(slog.Default())}); err != nil {
+		slog.Error("the app ended", "err", err)
+	}
+}
+
+func report(logger *slog.Logger) func(err error) {
+	return func(err error) {
+		appErr, ok := errors.FromError(err)
+		if ok && appErr.Tag == m.TagGoErrUndelivered { // a failure that nobody was left to show
+			for _, e := range errors.All(err)[1:] { // the error of the work, with its own tag and route
+				logger.Warn("work of a state failed", "tag", e.Tag, "route", e.Route(), "err", e)
+			}
+			return
+		}
+		logger.Error("framework error", "err", err)
+	}
+}
+```
+
+In a test with `gluttertest`, such a report is an error that the framework reported: take it with
+`tester.TakeError()` when the test expects it, or the test fails, as for any reported error. For a goroutine that no
 `State` starts (a `go` statement, a worker of your own), call `errors.Async` before you start
 it, and run what it returns in the goroutine, when its error goes back to the UI thread.
 
@@ -2438,7 +2481,8 @@ If you build Flutter apps for iOS, this is how a Glutter app becomes an `.app` f
 - **Threads.** The framework runs on one goroutine, the UI thread. Other goroutines hand
   work over with `SetState` or the binding's `Post`; `State.Go` starts a goroutine that is
   cancelled with the state, and `State.GoErr` does the same for work that returns an error and
-  gives the error to a function on the UI thread. There is no `async` and `await`: blocking is fine on your own
+  gives the error to a function on the UI thread (an error that the function cannot get is reported to the app's
+  error reporter as `TagGoErrUndelivered`, unless it is a cancellation). There is no `async` and `await`: blocking is fine on your own
   goroutines.
 - **Errors.** Flutter's exceptions are panics only for programmer errors (a debug-build
   `assert` is a check that exists in debug builds, which `-tags debug_mode` makes; a plain build is a release build without it). A

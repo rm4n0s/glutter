@@ -295,6 +295,19 @@ func (s *StateOf[W]) Go(fn func(ctx context.Context)) {
 // the UI; the work that fn produces is assigned to a variable of the caller, and
 // done reads it.
 //
+// An error of fn that cannot reach done is not lost: when done is nil, or when the
+// state was disposed before done could run, a non-nil error is reported once to the
+// error reporter of the build owner (OnError, SPEC §14.2), as the error
+// TagGoErrUndelivered, which has the error of fn as its OriginalErr and the
+// metadata "state", "reason" ("no callback" or "disposed"), "originalTag" and
+// "originalRoute". It is no panic:
+// OnError logs it and its OriginalErr (errors.All gives both), it does not treat
+// it as a crash. Work that ended with the cancellation of the Lifetime (an error
+// for which errors.Is(err, context.Canceled) or errors.Is(err, context.Cause(ctx))
+// holds, while the Lifetime is done) ended as expected: it is not reported. A nil
+// error is never reported. Without an OnError the report panics, as the error of
+// BuildOwner does when it has no reporter.
+//
 // Flutter: no counterpart (SPEC §12.6)
 func (s *StateOf[W]) GoErr(fn func(ctx context.Context) error, done func(err error)) {
 	o := s.owner
@@ -314,13 +327,40 @@ func (s *StateOf[W]) GoErr(fn func(ctx context.Context) error, done func(err err
 	work := errors.Async(func() error { return fn(ctx) })
 	state := foundation.RuntimeTypeName(s.self)
 	kv := func() []any { return []any{"library", "widgets library", "state", state} }
+	// undelivered reports the error of fn that could not be given to done, unless the work ended with the
+	// cancellation of the Lifetime. It is called on the goroutine of the work (no callback) or on the UI thread
+	// (disposed); report posts it to the UI thread in the first case.
+	undelivered := func(err error, reason string) {
+		if endedByCancel(ctx, err) {
+			return
+		}
+		meta := []any{"library", "widgets library", "state", state, "reason", reason}
+		if inner := errors.All(err); len(inner) > 0 {
+			// The log of an error shows its OriginalErr as text: the tag and the route of the error of the work are
+			// in the metadata, so that any reporter, the default one included, logs them.
+			meta = append(meta, "originalTag", inner[0].Tag, "originalRoute", inner[0].Route())
+		}
+		e := errors.NewErr(TagGoErrUndelivered, err).
+			SetMessage("the error of the work of State.GoErr was not given to a callback (" + reason + "): " + err.Error()).
+			SetMetadata(meta...)
+		if report == nil {
+			panic(e)
+		}
+		report(e)
+	}
 	go foundation.Guard(report, foundation.CallbackPanicked, "in a goroutine started by State.GoErr of "+state, kv, func() {
 		err := work()
 		if done == nil {
+			if err != nil {
+				undelivered(err, undeliveredNoCallback)
+			}
 			return
 		}
 		deliver := func() {
 			if s.element == nil {
+				if err != nil {
+					undelivered(err, undeliveredDisposed)
+				}
 				return
 			}
 			foundation.Guard(report, foundation.CallbackPanicked, "in the callback of State.GoErr of "+state, kv, func() { done(err) })
@@ -331,6 +371,37 @@ func (s *StateOf[W]) GoErr(fn func(ctx context.Context) error, done func(err err
 		}
 		deliver()
 	})
+}
+
+// TagGoErrUndelivered is the tag of the error that State.GoErr reports to OnError when the work of the state
+// failed and the error could not be given to a callback: the callback is nil ("reason" is "no callback"), or the
+// state was disposed before it could run ("reason" is "disposed"). The error of the work is its OriginalErr, with
+// its own tag and route (errors.All lists both); the metadata also has "state", "library", and, when the error of
+// the work is an *errors.Error, its "originalTag" and "originalRoute", which a log of the report shows. It is a
+// report of an error, not of a panic: an OnError logs it instead of treating it as a crash (SPEC §14.2).
+//
+// Flutter: no counterpart
+const TagGoErrUndelivered = "GoErrUndelivered"
+
+// The values of the "reason" of a TagGoErrUndelivered error.
+const (
+	undeliveredNoCallback = "no callback"
+	undeliveredDisposed   = "disposed"
+)
+
+// endedByCancel says whether err is how the work of ctx ends when ctx is cancelled: ctx is done and err is
+// context.Canceled or the cause of ctx (for a context that ended by its deadline, that is context.DeadlineExceeded),
+// at any depth of its wrapping (errors.Is). An error of the work that only has the tag or the text of a cancellation
+// is not one, and neither is a deadline of the work while ctx was cancelled.
+func endedByCancel(ctx context.Context, err error) bool {
+	if ctx.Err() == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	cause := context.Cause(ctx)
+	return cause != nil && errors.Is(err, cause)
 }
 
 // ToStringShort describes the state by its type and short hash.

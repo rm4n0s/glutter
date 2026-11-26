@@ -200,6 +200,38 @@ func TestFutureBuilderErrorKeepsTheRouteOfTheBuild(t *testing.T) {
 	}
 }
 
+// TestFutureBuilderFailureAfterDisposeIsReported: a future that fails with a real error after its widget left the tree
+// has nobody to show the error to, so GoErr reports it (TagGoErrUndelivered) with the route of the future's error; a
+// future that ends with the cancellation of its context (TestFutureBuilderCancelsItsContext) reports nothing.
+func TestFutureBuilderFailureAfterDisposeIsReported(t *testing.T) {
+	ts := gluttertest.New(t, gluttertest.Opts{})
+	started, release := make(chan struct{}), make(chan struct{})
+	pumpLoose(ts, NewFutureBuilder(func(ctx context.Context) (string, error) {
+		close(started)
+		<-release
+		return failingFuture(ctx)
+	}, func(BuildContext, AsyncSnapshot[string]) Widget { return newLeaf() }), ui.TextDirectionLTR)
+	<-started
+	pumpLoose(ts, newLeaf(), ui.TextDirectionLTR)
+	close(release)
+	waitFor(t, ts, func() bool { return len(ts.Errors()) > 0 })
+	err := ts.TakeError()
+	report := requireErrorTag(t, err, TagGoErrUndelivered)
+	if report.Metadata["reason"] != "disposed" {
+		t.Errorf("reason = %v, want disposed", report.Metadata["reason"])
+	}
+	all := errors.All(err)
+	if len(all) != 2 || all[1].Tag != tagBoom ||
+		!all[1].HasRoute("futureBuilderState[...].InitState->futureBuilderState[...].subscribe->StateOf[...].GoErr->StateOf[...].GoErr.func1->") ||
+		!all[1].HasRoute("failingFuture."+tagBoom) {
+		t.Errorf("the original error of the future: %v", all)
+	}
+	ts.Pump()
+	if more := ts.Errors(); len(more) != 0 {
+		t.Errorf("%d more errors were reported, want the report once", len(more))
+	}
+}
+
 func TestFutureBuilderIdentityRestartsAndNilStops(t *testing.T) {
 	ts := gluttertest.New(t, gluttertest.Opts{})
 	starts := 0
