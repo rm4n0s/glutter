@@ -132,8 +132,9 @@ type SystemTrayOpts struct {
 // with the middle button OnSecondaryActivate, a right click opens the menu, and the icon comes back
 // when Explorer restarts; the status, the attention icon and OnScroll have no counterpart there, and
 // the icon is the picture nearest to the size of a small icon. When no
-// desktop shows icons, the error TrayUnavailable is reported once through the error
-// reporter of the binding and the widget is just its child. An app has one tray at a
+// desktop shows icons, the error TrayUnavailable (TagTrayUnavailable) is reported once
+// through the error reporter of the binding and the widget is just its child;
+// TrayAvailable asks before the tray is placed. An app has one tray at a
 // time; a second one reports TrayDuplicate.
 //
 // Flutter: no counterpart
@@ -440,6 +441,68 @@ func (t *tray) update(m *trayModel) {
 	}
 }
 
+// TrayAvailable says whether the desktop of the app shows the icons of a SystemTray, so that an app can tell its
+// user before a tray is placed (and disable a setting that would put the app in the tray). On Linux it asks the
+// session bus whether a StatusNotifierWatcher is running there (NameHasOwner): KDE Plasma, XFCE, Cinnamon and
+// others run one, and GNOME runs one only with the AppIndicator extension; it is false without a session bus. On
+// Windows (the notification area) and macOS (the menu bar) it is true, and on Android, iOS and the web, which have
+// no tray, false. When it is false a SystemTray reports TagTrayUnavailable; when it is true the tray is shown,
+// unless the desktop goes away in between or refuses the icon (TrayRegisterFailed). The answer can change while
+// the app runs (a panel that starts or ends); ask again when it matters.
+//
+// It may wait for the session bus, so it must not be called on the UI thread: call it from a goroutine, as the
+// other calls of the package (DesktopCallOnUIThread). It fails with DesktopWithoutBinding when bc does not belong
+// to a WidgetsBinding, with the error of the bus when the question cannot be asked, and, when ctx ends, with an
+// error whose cause is the context's error.
+//
+// Flutter: no counterpart
+func TrayAvailable(ctx context.Context, bc widgets.BuildContext) (bool, error) {
+	b := widgets.MaybeWidgetsBindingOf(bc)
+	if b == nil {
+		return false, errors.New(tagDesktopWithoutBinding, "the context does not belong to a WidgetsBinding")
+	}
+	if b.UIThread().IsCurrent() {
+		return false, errors.New(tagDesktopCallOnUIThread,
+			"a call of package desktop waits for the desktop, so it must not be made on the UI thread: call it from a goroutine")
+	}
+	s := servicesOf(b)
+	s.mu.Lock()
+	bus, web, android, win := s.bus, s.web, s.android, s.windows
+	s.mu.Unlock()
+	switch {
+	case bus != nil:
+		// A bus that a test or the app's earlier calls put in place is asked, whatever the platform.
+	case web != nil, android != nil:
+		return false, nil
+	case win != nil:
+		return true, nil
+	}
+	bus, err := s.connect(ctx, TagTrayUnavailable)
+	if err != nil {
+		if ctx.Err() != nil {
+			return false, err
+		}
+		// A desktop without a session bus shows no tray, and the tray would report TrayUnavailable there.
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
+	defer cancel()
+	body, err := bus.Call(ctx, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.NameHasOwner", watcherDest)
+	if err != nil {
+		return false, err
+	}
+	if len(body) != 1 {
+		return false, errors.New(tagTrayAvailabilityInvalid, "the bus answered NameHasOwner with another number of values",
+			"values", len(body))
+	}
+	owned, ok := body[0].(bool)
+	if !ok {
+		return false, errors.New(tagTrayAvailabilityInvalid, "the bus answered NameHasOwner with a value that is not a boolean",
+			"type", reflect.TypeOf(body[0]).String())
+	}
+	return owned, nil
+}
+
 // release lets a new tray be made; it is called when the widget goes away, and the
 // worker, whose context ends with the state, takes the icon off the bus.
 func (t *tray) release() {
@@ -468,7 +531,7 @@ func (t *tray) run(ctx context.Context) error {
 			return nil
 		}
 	}
-	bus, err := t.s.connect(ctx, "TrayUnavailable")
+	bus, err := t.s.connect(ctx, TagTrayUnavailable)
 	if err != nil {
 		if ctx.Err() == nil {
 			return err
@@ -555,7 +618,7 @@ func (t *tray) register(ctx context.Context, bus dbus.Bus) error {
 	defer cancel()
 	if _, err := bus.Call(ctx, watcherDest, watcherPath, watcherIface+".RegisterStatusNotifierItem", t.name); err != nil {
 		if portalMissing(err) {
-			return errors.NewErr(tagTrayUnavailable, err)
+			return errors.NewErr(TagTrayUnavailable, err)
 		}
 		return errors.NewErr(tagTrayRegisterFailed, err)
 	}
@@ -793,5 +856,15 @@ const (
 	tagTrayDuplicate      = "TrayDuplicate"
 	tagTrayIconInvalid    = "TrayIconInvalid"
 	tagTrayRegisterFailed = "TrayRegisterFailed"
-	tagTrayUnavailable    = "TrayUnavailable"
+	// tagTrayAvailabilityInvalid is a bus whose answer to NameHasOwner does not read.
+	tagTrayAvailabilityInvalid = "TrayAvailabilityInvalid"
 )
+
+// TagTrayUnavailable is the tag of the error that a SystemTray reports through the error reporter of the binding
+// when no desktop shows its icon: on Linux there is no StatusNotifierWatcher on the session bus, or no session bus;
+// on Android, iOS and the web there is no tray. An app matches it with
+// errors.Is(err, &errors.Error{Tag: desktop.TagTrayUnavailable}), or with the Tag of errors.FromError, and can ask
+// before it places a tray with TrayAvailable.
+//
+// Flutter: no counterpart
+const TagTrayUnavailable = "TrayUnavailable"

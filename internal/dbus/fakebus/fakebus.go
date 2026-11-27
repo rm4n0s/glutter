@@ -9,6 +9,7 @@ import (
 	"context"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	godbus "github.com/godbus/dbus/v5"
@@ -124,7 +125,9 @@ func (b *Bus) Calls() []Call {
 func (b *Bus) UniqueName() string { return b.unique }
 
 // Call records the call and runs its handler. A call nobody handles fails with
-// org.freedesktop.DBus.Error.ServiceUnknown, as if the service were missing.
+// org.freedesktop.DBus.Error.ServiceUnknown, as if the service were missing, except
+// org.freedesktop.DBus.NameHasOwner, which the bus answers itself (true for a name
+// that a handler serves or that a connection owns) unless a handler is given for it.
 func (b *Bus) Call(ctx context.Context, dest string, path godbus.ObjectPath, method string, args ...any) ([]any, error) {
 	c := Call{Dest: dest, Path: path, Method: method, Args: args}
 	b.mu.Lock()
@@ -132,6 +135,13 @@ func (b *Bus) Call(ctx context.Context, dest string, path godbus.ObjectPath, met
 	h := b.handlers[handlerKey(dest, path, method)]
 	if h == nil {
 		h = b.handlers[handlerKey(dest, anyPath, method)]
+	}
+	if h == nil && dest == busDest && method == nameHasOwner && len(args) == 1 {
+		// The bus itself answers who owns a name, as a real bus does, unless the test gave the method a handler.
+		name, _ := args[0].(string)
+		owned := b.ownedLocked(name)
+		b.mu.Unlock()
+		return []any{owned}, nil
 	}
 	b.mu.Unlock()
 	if h == nil {
@@ -141,6 +151,28 @@ func (b *Bus) Call(ctx context.Context, dest string, path godbus.ObjectPath, met
 		}).SetMetadata("dest", dest)
 	}
 	return h(c)
+}
+
+// The bus daemon's name and its method that says whether a name has an owner.
+const (
+	busDest      = "org.freedesktop.DBus"
+	nameHasOwner = "org.freedesktop.DBus.NameHasOwner"
+)
+
+// ownedLocked says whether a name has an owner on the fake bus: the bus itself, this connection's unique name, a
+// name that some handler serves (Handle or HandleAnyPath), a name this connection took with RequestName, or a name
+// that Take gave another connection. b.mu is held.
+func (b *Bus) ownedLocked(name string) bool {
+	if name == busDest || name == b.unique || b.names[name] || b.taken[name] {
+		return true
+	}
+	prefix := name + "|"
+	for k := range b.handlers {
+		if strings.HasPrefix(k, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // Subscribe delivers the emitted signals that match until ctx is done.

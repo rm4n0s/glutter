@@ -150,6 +150,10 @@ const (
 	trayMenuIfc  = "com.canonical.dbusmenu"
 	chooserIfc   = "org.freedesktop.portal.FileChooser"
 	openURIIfc   = "org.freedesktop.portal.OpenURI"
+
+	trayWatcher     = "org.kde.StatusNotifierWatcher"
+	trayWatcherPath = godbus.ObjectPath("/StatusNotifierWatcher")
+	trayRegister    = trayWatcher + ".RegisterStatusNotifierItem"
 )
 
 // fileChooserMethods are the methods of the file chooser portal that package desktop calls.
@@ -171,7 +175,7 @@ func (t *Tester) FakeDesktop() *FakeDesktop {
 		f.markClosed(c.Args[0].(uint32))
 		return nil, nil
 	})
-	b.Handle("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher.RegisterStatusNotifierItem",
+	b.Handle(trayWatcher, trayWatcherPath, trayRegister,
 		func(c fakebus.Call) ([]any, error) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
@@ -475,6 +479,17 @@ func (f *FakeDesktop) CloseNotification(id, reason uint32) {
 	f.markClosed(id)
 	f.bus.Emit(&godbus.Signal{Path: notifPath, Name: notifDest + ".NotificationClosed", Body: []any{id, reason}})
 	f.settle()
+}
+
+// DisableTray takes the StatusNotifierWatcher away, as on a desktop that shows no tray
+// icons (GNOME without the AppIndicator extension): desktop.TrayAvailable answers false,
+// and a SystemTray that is placed afterwards reports desktop.TagTrayUnavailable through
+// the error reporter (Tester.TakeError), until the test ends. A tray that registered
+// already stays.
+//
+// Flutter: no counterpart
+func (f *FakeDesktop) DisableTray() {
+	f.bus.Unhandle(trayWatcher, trayWatcherPath, trayRegister)
 }
 
 // TrayRegistered says whether a tray icon registered with the watcher.

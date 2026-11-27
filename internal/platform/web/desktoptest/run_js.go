@@ -12,6 +12,8 @@ import (
 
 	"github.com/rm4n0s/errors"
 	"github.com/rm4n0s/glutter/desktop"
+	"github.com/rm4n0s/glutter/internal/issues"
+	"github.com/rm4n0s/glutter/internal/issues/trayrun"
 	"github.com/rm4n0s/glutter/internal/platform/web"
 	m "github.com/rm4n0s/glutter/material"
 )
@@ -107,8 +109,20 @@ func main() {
 
 func run() error {
 	p := newProbe()
+	r := trayrun.New()
 	go func() { postResult("desktop", observe(p)) }()
-	return m.RunApp(&page{p: p}, m.RunAppOpts{Window: m.WindowConfig{Title: "Desktop test"}})
+	// The reproduction of the issue "The tray's availability" (step 60.1): the web has no tray.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		rep := r.Run(ctx, "web", issues.TrayAnswerNo, 3*time.Second)
+		postResult(issues.TrayAvailableName, map[string]any{"lines": rep.Lines()})
+	}()
+	report := m.DefaultErrorReporter(nil)
+	return m.RunApp(&page{p: p, r: r}, m.RunAppOpts{
+		Window:        m.WindowConfig{Title: "Desktop test"},
+		ErrorReporter: func(err error) { r.Report(err); report(err) },
+	})
 }
 
 func eval(code string) js.Value { return js.Global().Get("Function").New(code).Invoke() }

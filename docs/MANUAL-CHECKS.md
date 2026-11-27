@@ -1331,3 +1331,22 @@ Answers:
 - Mac (step 59.1): _(not yet recorded)_
 - Theatro on GNOME: _(not yet recorded)_
 - Windows PC: _(not yet recorded)_
+
+## 60.1 An app asks whether the desktop shows tray icons
+
+Step 60.1 (Glutter 1.17.16) exports `desktop.TagTrayUnavailable` and adds `desktop.TrayAvailable(ctx, bc)`, so that an app can say "no tray on this desktop" before its user turns the tray on, and match the tray's error without its text. On Linux it asks the session bus whether a StatusNotifierWatcher runs; Windows and macOS answer yes, Android, iOS and the web no. On the Linux machine the reproduction (`internal/issues`, `tray-available`: ask, then place a `SystemTray`, and check that the two agree) ran on a `dbus-daemon` of its own (a watcher, none, no session bus), under Wine, on the Android emulator and in Chromium and Firefox, and passed; a `TrayAvailable` that answered yes without a watcher failed it. macOS and iOS are step 61.1, the Mac's. What only real desktops show (from the module root):
+
+**On Linux desktops**
+
+1. On KDE Plasma (or XFCE, Cinnamon), and on GNOME without and then with the AppIndicator extension: `go run ./examples/dev/trayavailable`. It prints a line `tray-available: platform linux want - answer yes tray shown` where a tray is shown (the icon appears in the panel for a moment) and `answer no tray unavailable` on GNOME without the extension, then `GLUTTER_ISSUE done`, and exits. When a line says `problem:` or the answer is not what the desktop shows, send the output and the name and version of the desktop.
+2. In the app that reported the issue, with Glutter 1.17.16: replace the match by text in `trayWatch.report` with `errors.Is(err, &errors.Error{Tag: desktop.TagTrayUnavailable})`, and ask `desktop.TrayAvailable` when the settings are shown; on GNOME without the extension the tray's switch is off before it is touched.
+
+**On a Windows PC** (the test passed under Wine)
+
+3. `go run ./examples/dev/trayavailable`: it prints `tray-available: platform windows want yes answer yes tray shown` (the icon appears in the notification area for a moment, perhaps in its overflow) and exits. When it does not, send the output and the version of Windows.
+
+Answers:
+- Mac (step 61.1): _(not yet recorded)_
+- Linux desktops: _(not yet recorded)_
+- The app: _(not yet recorded)_
+- Windows PC: _(not yet recorded)_

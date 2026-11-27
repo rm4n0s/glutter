@@ -205,6 +205,48 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 ```
 
 **What is new in 1.17.** Release builds by default, and the Linux run of 1.13 to 1.16.
+- **New** (1.17.16): `desktop.TrayAvailable(ctx, bc)` says whether the desktop shows tray icons, so an app can say "no tray on this desktop" (and turn off its tray setting) before it places a `SystemTray`. On Linux it is whether a StatusNotifierWatcher runs on the session bus (KDE Plasma, XFCE, Cinnamon; GNOME only with the AppIndicator extension), false without a session bus; it is true on Windows and macOS and false on Android, iOS and the web. Call it from a goroutine, as the other calls of `desktop`. The tag of the tray's error is exported, so an app matches it without its text: `errors.Is(err, &errors.Error{Tag: desktop.TagTrayUnavailable})`. In tests, `gluttertest`'s `FakeDesktop.DisableTray()` makes a desktop without a tray: `TrayAvailable` answers false and a tray reports `TagTrayUnavailable`.
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/rm4n0s/glutter/desktop"
+	m "github.com/rm4n0s/glutter/material"
+)
+
+type Settings struct{ m.StatefulWidget }
+
+func (w *Settings) CreateState() m.State { return &settingsState{} }
+
+type settingsState struct {
+	m.StateOf[*Settings]
+	noTray bool // the switch of the tray is off: this desktop shows no tray icons
+}
+
+func (s *settingsState) InitState() {
+	bc := s.Context()
+	var shown bool
+	s.GoErr(func(ctx context.Context) error {
+		var err error
+		shown, err = desktop.TrayAvailable(ctx, bc) // it waits for the bus: not on the UI thread
+		return err
+	}, func(err error) {
+		s.SetState(func() { s.noTray = err != nil || !shown })
+	})
+}
+
+func (s *settingsState) Build(bc m.BuildContext) m.Widget {
+	if s.noTray {
+		return m.NewText("This desktop shows no tray icons")
+	}
+	return m.NewText("Keep running in the tray")
+}
+
+func main() {}
+```
 - **Changed** (1.17.15): an error that `State.GoErr` cannot hand to `done` is no longer lost. When `done` is `nil`, or the state was disposed before `done` could run (a screen that was closed while its work ran), a non-nil error of the work is reported once to the app's error reporter (`RunAppOpts.ErrorReporter`, which logs it by default) as an error with the tag `GoErrUndelivered` (`m.TagGoErrUndelivered`). Its `OriginalErr` is the error of the work, and its metadata has `state`, `reason` (`"no callback"` or `"disposed"`), `originalTag` and `originalRoute`; `errors.All(err)` gives the report and then the original error with its own tag and whole route. It is no panic (its tag is not `CallbackPanicked`, and `foundation.IsRecoveredPanic` is false), so a reporter that ends the program on a crash must log it instead. Work that ended with the cancellation of the state's context (`context.Canceled`, or the cause of the context, however it is wrapped) is not reported, and a nil error never is. Without an error reporter the report panics, as the error of a build owner does. Nothing else of `GoErr` changes; `FutureBuilder` uses it, so a future that fails with a real error after its widget was disposed is now reported. A `gluttertest` test that expects such an error takes it with `TakeError()`. The functions that give up when their context ends now keep its error as the cause on every platform (the Android and web `OpenURI`, the Android notifications and audio permission, the web clipboard writes, the `xdg-open` run of `OpenURI`), so `errors.Is(err, context.Canceled)` finds the cancellation ([the guide](docs/GUIDE.md#8-asynchronous-data)).
 - **New** (1.17.14): `State.GoErr(fn func(ctx context.Context) error, done func(err error))` is `State.Go` for work that returns an error. It calls `errors.Async` for you, so the route of an `*errors.Error` that `fn` returns goes on with the method that called `GoErr` (`screenState.unlock->StateOf[...].GoErr->StateOf[...].GoErr.func1->...->Unlock->...Tag`) instead of starting at the goroutine, and it calls `done` with the error on the UI thread, where you show or log it and call `SetState`. `done` is not called when the state was disposed meanwhile, and a panic in `fn` or in `done` is reported as `CallbackPanicked`, as in `State.Go`. `State.Go` is unchanged. Glutter's `FutureBuilder` uses it, so the route of its future's error has the two frames of `GoErr` after `futureBuilderState.subscribe` ([the guide](docs/GUIDE.md#8-asynchronous-data)).
 - **Fixed** (1.17.14): `go.mod` has the line `toolchain go1.27.4`, so that Glutter's own builds and checks use the Go release that fixes GO-2026-6859 (`net/http`, a crash of an HTTP/1 server through `MaxBytesReader`; the `svg` network loader, `glutter-web serve` and the web tests use `net/http`). It is a library: the `go` line is still 1.27, and an app builds with the Go of its own `go.mod`; use Go 1.27.4 or newer. No module that Glutter requires changed.

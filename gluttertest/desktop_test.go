@@ -39,6 +39,55 @@ func trayApp(opts desktop.SystemTrayOpts) widgets.Widget {
 		desktop.NewSystemTray(ui.WindowIcon{Name: "x"}, widgets.NewText("child"), opts))
 }
 
+// trayAvailable asks desktop.TrayAvailable from a goroutine, as an app does.
+func trayAvailable(t *testing.T, bc widgets.BuildContext) bool {
+	t.Helper()
+	type answer struct {
+		ok  bool
+		err error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		ok, err := desktop.TrayAvailable(context.Background(), bc)
+		got <- answer{ok, err}
+	}()
+	a := <-got
+	if a.err != nil {
+		t.Fatalf("TrayAvailable: %v", a.err)
+	}
+	return a.ok
+}
+
+// TestFakeDesktopDisableTray: the fake desktop shows tray icons until the test takes its watcher away; then
+// desktop.TrayAvailable answers no and a tray reports TagTrayUnavailable, on every target platform.
+func TestFakeDesktopDisableTray(t *testing.T) {
+	for _, p := range everyTargetPlatform {
+		t.Run(p.String(), func(t *testing.T) {
+			ts := New(t)
+			runAs(t, p)
+			fd := ts.FakeDesktop()
+			ts.PumpWidget(widgets.NewDirectionality(ui.TextDirectionLTR, widgets.NewText("main")))
+			bc := ts.Element(ByText("main"))
+			if !trayAvailable(t, bc) {
+				t.Fatal("TrayAvailable answered no on the fake desktop")
+			}
+			fd.DisableTray()
+			if trayAvailable(t, bc) {
+				t.Fatal("TrayAvailable answered yes after DisableTray")
+			}
+			ts.PumpWidget(trayApp(desktop.SystemTrayOpts{}))
+			var err error
+			fd.WaitFor("the error of the tray", func() bool { err = ts.TakeError(); return err != nil })
+			if !errors.Is(err, &errors.Error{Tag: desktop.TagTrayUnavailable}) {
+				t.Errorf("the tray reported %v, want TrayUnavailable", err)
+			}
+			if fd.TrayRegistered() {
+				t.Error("a tray registered after DisableTray")
+			}
+		})
+	}
+}
+
 func TestFakeDesktopTray(t *testing.T) {
 	ts := New(t)
 	fd := ts.FakeDesktop()

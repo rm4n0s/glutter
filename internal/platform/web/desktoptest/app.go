@@ -3,6 +3,7 @@
 package main
 
 import (
+	"github.com/rm4n0s/glutter/internal/issues/trayrun"
 	m "github.com/rm4n0s/glutter/material"
 )
 
@@ -23,19 +24,22 @@ func newProbe() *probe { return &probe{ready: make(chan struct{})} }
 type page struct {
 	m.StatelessWidget
 	p *probe
+	// r runs the reproduction of the issue "The tray's availability" beside the page.
+	r *trayrun.Runner
 }
 
 func (a *page) Build(bc m.BuildContext) m.Widget {
 	return m.NewMaterialApp(m.MaterialAppOpts{
 		Title:                      "Desktop test",
 		DebugShowCheckedModeBanner: m.Some(false),
-		Home:                       &home{StatefulWidget: m.NewStatefulWidgetBase(), p: a.p},
+		Home:                       &home{StatefulWidget: m.NewStatefulWidgetBase(), p: a.p, r: a.r},
 	})
 }
 
 type home struct {
 	m.StatefulWidget
 	p *probe
+	r *trayrun.Runner
 }
 
 func (w *home) CreateState() m.State { return &homeState{} }
@@ -49,5 +53,5 @@ func (s *homeState) Build(bc m.BuildContext) m.Widget {
 		p.binding = m.WidgetsBindingOf(bc)
 		close(p.ready)
 	}
-	return m.NewScaffold(m.ScaffoldOpts{Body: m.NewCenter(m.NewText("Desktop services"))})
+	return m.NewScaffold(m.ScaffoldOpts{Body: s.Widget().r.Wrap(m.NewCenter(m.NewText("Desktop services")))})
 }

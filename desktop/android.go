@@ -31,7 +31,7 @@ func newAndroidDesktop(b *widgets.WidgetsBinding) androidDesktop {
 // platform's own, without a tray or file dialogs), and D-Bus is never tried there.
 func iosReason(tag string) string {
 	switch tag {
-	case "TrayUnavailable":
+	case TagTrayUnavailable:
 		return "iOS has no system tray: D-Bus is never tried on iOS"
 	case "FileChooserUnavailable":
 		return "the file dialogs are not available on iOS: the document picker gives URLs, not paths (the URI-based API of SPEC §21 is the way), and D-Bus is never tried on iOS"
@@ -42,7 +42,7 @@ func iosReason(tag string) string {
 // androidReason is why the service behind tag does not exist on Android.
 func androidReason(tag string) string {
 	switch tag {
-	case "TrayUnavailable":
+	case TagTrayUnavailable:
 		return "Android has no system tray: D-Bus is never tried on Android"
 	case "FileChooserUnavailable":
 		return "the file chooser is not available on Android: the Storage Access Framework gives content: URIs, not paths, and D-Bus is never tried on Android"

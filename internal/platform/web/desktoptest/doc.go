@@ -6,6 +6,9 @@
 // result of kind "desktop": the arguments window.open got, the tags of the errors, whether a refused
 // permission was asked for again, the options the Notification was made with, and the callbacks that
 // came back on the UI thread. The code under test is the real one; only the browser's objects are stubs.
+// Beside that it runs the reproduction of the issue "The tray's availability" (step 60.1, internal/issues
+// and internal/issues/trayrun: desktop.TrayAvailable, then a SystemTray) and posts its report's lines as a
+// result of kind "tray-available".
 //
 // It only does something on the web; elsewhere it says so and exits. It is built by the tests with the web
 // build tool (webtool.Build), not run by hand.

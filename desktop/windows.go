@@ -35,7 +35,7 @@ func newWindowsDesktop(b *widgets.WidgetsBinding) windowsDesktop {
 // Windows' (the platform's own), and D-Bus is not tried there.
 func macOSReason(tag string) string {
 	switch tag {
-	case "TrayUnavailable":
+	case TagTrayUnavailable:
 		return "the menu bar of macOS is not served over D-Bus: D-Bus is never tried on macOS"
 	case "FileChooserUnavailable":
 		return "the file dialogs of macOS are not served over D-Bus: D-Bus is never tried on macOS"
@@ -46,7 +46,7 @@ func macOSReason(tag string) string {
 // windowsReason is why the service behind tag does not use D-Bus on Windows.
 func windowsReason(tag string) string {
 	switch tag {
-	case "TrayUnavailable":
+	case TagTrayUnavailable:
 		return "the system tray of Windows is not served over D-Bus: D-Bus is never tried on Windows"
 	case "FileChooserUnavailable":
 		return "the file dialogs of Windows are not served over D-Bus: D-Bus is never tried on Windows"

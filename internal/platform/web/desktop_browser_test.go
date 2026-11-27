@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rm4n0s/glutter/internal/issues"
 	"github.com/rm4n0s/glutter/internal/webtest"
 	"github.com/rm4n0s/glutter/internal/webtool"
 )
@@ -134,5 +135,38 @@ func TestBrowserDesktopServices(t *testing.T) {
 		check("a replacing notification keeps the ID", o.SameID, true)
 		check("a page with no Notification", o.NoAPI, "NotificationsUnavailable")
 		check("every callback ran on the UI thread", o.CallbacksOnUIThread, true)
+	})
+}
+
+// TestBrowserTellsWhetherTheDesktopShowsTrayIcons is the issue "The tray's availability" (step 60.1) in Chromium
+// and Firefox: desktoptest runs the reproduction of internal/issues (desktop.TrayAvailable from a goroutine, then
+// a SystemTray) and posts its report. The web has no tray, so the answer is no and the tray reports
+// TrayUnavailable (its cause DBusUnavailableOnWeb), which matches desktop.TagTrayUnavailable.
+func TestBrowserTellsWhetherTheDesktopShowsTrayIcons(t *testing.T) {
+	dir := desktopSite(t)
+	webtest.EachBrowser(t, func(t *testing.T, b webtest.Browser) {
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+		res, err := webtest.Await(ctx, webtest.ShotOptions{Dir: dir, Browser: b, Width: 480, Height: 640}, issues.TrayAvailableName)
+		if err != nil {
+			t.Fatalf("Await in %s: %v", b, err)
+		}
+		var got struct {
+			Lines []string `json:"lines"`
+		}
+		if err := json.Unmarshal(res.Data, &got); err != nil {
+			t.Fatalf("the result is not the report: %v\n%s", err, res.Data)
+		}
+		rep, err := issues.ParseTrayAvailable(got.Lines)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%s", got.Lines)
+		if rep.Platform != "web" {
+			t.Errorf("the report is of %q, want web", rep.Platform)
+		}
+		for _, p := range rep.Problems() {
+			t.Error(p)
+		}
 	})
 }
