@@ -791,24 +791,58 @@ func (t *Tester) EnsureSemantics() *semantics.SemanticsHandle {
 	return t.handle
 }
 
-// Scenes are the scenes that the view rendered, one for each frame that was
-// composited.
+// Scenes are the scenes that the views rendered, in the order they were
+// composited: one for each frame while only the implicit view is open, and one
+// for each view of a frame while windows of a WindowManager are open (each frame
+// draws the implicit view first). ViewScenes has the scenes of one view.
 //
 // Flutter: no counterpart
 func (t *Tester) Scenes() []*ui.Scene { return t.host.Scenes() }
 
-// Screenshot renders the last scene with the software renderer, in physical
-// pixels. It fails the test when no frame was composited yet.
+// Screenshot renders the implicit view's last scene with the software renderer,
+// in physical pixels, also while other windows are open: ScreenshotView renders
+// another view's. It fails the test when the implicit view composited no frame
+// yet (an app shown with PumpWidgetOpts.NoView whose windows are all its own
+// draws into the implicit view never).
 //
 // Flutter: flutter_test/lib/src/matchers.dart matchesGoldenFile
 func (t *Tester) Screenshot() *image.RGBA {
 	t.tb.Helper()
-	scenes := t.Scenes()
+	return t.screenshot(ui.ImplicitViewID)
+}
+
+// ScreenshotView renders the last scene of the view with the software renderer,
+// in physical pixels at the view's present size: the window of a
+// RegularWindowController or a DialogWindowController (its RootView), or the
+// implicit view, as Screenshot does. It fails the test when no view has the ID
+// (it was never made, or its window was destroyed) and when the view composited
+// no frame yet.
+//
+// Flutter: no counterpart
+func (t *Tester) ScreenshotView(view ui.ViewID) *image.RGBA {
+	t.tb.Helper()
+	return t.screenshot(view)
+}
+
+// screenshot renders the last scene of the view, or fails the test.
+func (t *Tester) screenshot(view ui.ViewID) *image.RGBA {
+	t.tb.Helper()
+	size := t.cfg.PhysicalSize
+	if view != ui.ImplicitViewID {
+		t.adopt()
+		v := t.d.View(view)
+		if v == nil {
+			t.fail(errors.New(tagScreenshotViewUnknown, "no view has the ID: it was never made, or its window was destroyed", "view", int64(view)))
+			return nil
+		}
+		size = v.PhysicalSize()
+	}
+	scenes := t.host.ScenesOf(view)
 	if len(scenes) == 0 {
-		t.fail(errors.New(tagScreenshotNoFrame, "no frame was composited yet; call PumpWidget or Pump first"))
+		t.fail(errors.New(tagScreenshotNoFrame, "the view composited no frame yet; call PumpWidget or Pump first", "view", int64(view)))
 		return nil
 	}
-	img, err := soft.Render(scenes[len(scenes)-1], int(t.cfg.PhysicalSize.Width), int(t.cfg.PhysicalSize.Height))
+	img, err := soft.Render(scenes[len(scenes)-1], int(size.Width), int(size.Height))
 	if err != nil {
 		t.fail(err)
 		return nil
@@ -816,9 +850,10 @@ func (t *Tester) Screenshot() *image.RGBA {
 	return img
 }
 
-// MatchesGolden compares the view, as the last frame drew it, with the golden
-// image testdata/goldens/<name>.png of the package under test. Run the tests
-// with -update-goldens to write the image, and look at every golden that
+// MatchesGolden compares the implicit view, as the last frame drew it, with the
+// golden image testdata/goldens/<name>.png of the package under test, also while
+// other windows are open: MatchesViewGolden compares another window. Run the
+// tests with -update-goldens to write the image, and look at every golden that
 // changed (CLAUDE.md).
 //
 // Flutter: flutter_test/lib/src/matchers.dart matchesGoldenFile
@@ -831,10 +866,26 @@ func (t *Tester) MatchesGolden(name string) {
 	goldens.Check(t.tb, name, img)
 }
 
+// MatchesViewGolden compares the view, as the last frame drew it (ScreenshotView),
+// with the golden image testdata/goldens/<name>.png of the package under test: the
+// window of a RegularWindowController or a DialogWindowController, by the ID of
+// its RootView. Run the tests with -update-goldens to write the image.
+//
+// Flutter: no counterpart
+func (t *Tester) MatchesViewGolden(view ui.ViewID, name string) {
+	t.tb.Helper()
+	img := t.ScreenshotView(view)
+	if img == nil {
+		return
+	}
+	goldens.Check(t.tb, name, img)
+}
+
 // The tags of the errors that this file makes (rm4n0s/errors, R5).
 const (
 	tagPumpAndSettleTimeout      = "PumpAndSettleTimeout"
 	tagScreenshotNoFrame         = "ScreenshotNoFrame"
+	tagScreenshotViewUnknown     = "ScreenshotViewUnknown"
 	tagTesterFontsWithTextEngine = "TesterFontsWithTextEngine"
 )
 

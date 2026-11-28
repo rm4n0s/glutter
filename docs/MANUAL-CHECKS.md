@@ -1350,3 +1350,13 @@ Answers:
 - Linux desktops: _(not yet recorded)_
 - The app: _(not yet recorded)_
 - Windows PC: _(not yet recorded)_
+
+## 62.1 A golden of one window while others are open
+
+Step 62.1 (Glutter 1.17.17) makes `gluttertest`'s `Screenshot` and `MatchesGolden` render the main window (the implicit view) while other windows of a `WindowManager` are open, and adds `ScreenshotView(view)` and `MatchesViewGolden(view, name)` for another window. On the Linux machine its tests ran on Linux, under Wine and under Node, in both modes, and passed; with the old behavior (the last scene of any view) the golden of the main window showed the other window and the tests failed. macOS is step 63.1, the Mac's. What only the app that reported it shows (from the app's module root):
+
+1. With Glutter 1.17.17, in `internal/gui/gui_test.go`, take out of `mainGolden` the destruction of the report windows and the check through `ViewScenes`, and take the main window's golden with the report windows open; add `ts.MatchesViewGolden(<report controller>.RootView().ViewID(), "<name>")` for a report window, run the app's tests with `-update-goldens` once, then without. The main window's golden must be the same image as before. When it differs, or a report window's golden is not that window, send the test, the `.actual.png` and `.diff.png` files and the output.
+
+Answers:
+- Mac (step 63.1): _(not yet recorded)_
+- The app: _(not yet recorded)_

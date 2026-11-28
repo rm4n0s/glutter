@@ -205,6 +205,7 @@ func startView(parent *m.WidgetsBinding, root m.Widget, send func(pixels []byte,
 ```
 
 **What is new in 1.17.** Release builds by default, and the Linux run of 1.13 to 1.16.
+- **Fixed** (1.17.17): `gluttertest`'s `Screenshot` and `MatchesGolden` show the main window (the implicit view) while other windows of a `WindowManager` are open; they showed the window that drew last. `ScreenshotView(view)` and `MatchesViewGolden(view, name)` take the golden of another window, by the ID of its controller's `RootView`: `ts.MatchesViewGolden(report.RootView().ViewID(), "report_window")`.
 - **New** (1.17.16): `desktop.TrayAvailable(ctx, bc)` says whether the desktop shows tray icons, so an app can say "no tray on this desktop" (and turn off its tray setting) before it places a `SystemTray`. On Linux it is whether a StatusNotifierWatcher runs on the session bus (KDE Plasma, XFCE, Cinnamon; GNOME only with the AppIndicator extension), false without a session bus; it is true on Windows and macOS and false on Android, iOS and the web. Call it from a goroutine, as the other calls of `desktop`. The tag of the tray's error is exported, so an app matches it without its text: `errors.Is(err, &errors.Error{Tag: desktop.TagTrayUnavailable})`. In tests, `gluttertest`'s `FakeDesktop.DisableTray()` makes a desktop without a tray: `TrayAvailable` answers false and a tray reports `TagTrayUnavailable`.
 
 ```go

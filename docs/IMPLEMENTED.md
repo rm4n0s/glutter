@@ -6643,3 +6643,23 @@ Copy this block, fill it in, and keep every heading. Write "none" where somethin
 - **Release:** **1.17.16** (`v1.17.16` on this step's commit): the app's issue of 1.17.15.
 - **Proof:** none (nothing drawn changes). **Manual checks:** MANUAL-CHECKS 60.1 (Linux desktops, the app that reported it, a Windows PC).
 - **Deviations and follow-ups:** none from Flutter (it has no tray). SPEC §8.9 ("Decided in step 60.1"), §14.1, §17; README (1.17.16). The other public tags of `desktop` (`NotificationsUnavailable`, `FileChooserUnavailable`, `OpenURIUnavailable`, `TrayRegisterFailed`, `TrayDuplicate`) are still unexported; the issue asked for the tray's only. M61 (step 61.1) runs the issue on macOS and in the Simulator.
+
+## 62.1 A golden of one window while others are open
+
+- **Date:** 2026-11-28
+- **Branch:** fix/step-62.1-view-golden
+- **Summary:** an app's issue "A golden of one window while others are open" is true. `gluttertest.Tester.Screenshot` and `MatchesGolden` rendered the last scene of `renderhost.Host.Scenes`, which has the scenes of every view; a frame renders the implicit view first and the windows of a `WindowManager` after it, so while a window was open a golden showed that window (at the main window's size) and never the main window. A test could not make a golden of one view either: `ViewScenes` gave its scenes, but the software renderer and the golden check are internal.
+  - `Screenshot` renders the last scene of `ui.ImplicitViewID` at the tester's physical size; `ScreenshotView(view)` renders another view's last scene at the physical size of the dispatcher's view (the implicit view's too). Both go through `Tester.screenshot`.
+  - `MatchesViewGolden(view, name)` checks `ScreenshotView`'s image against `testdata/goldens/<name>.png`, as `MatchesGolden` does for the implicit view.
+  - A view that does not exist (never made, or its window destroyed: the dispatcher removes the view) fails the test with the new tag `ScreenshotViewUnknown`; a view that drew no frame yet with `ScreenshotNoFrame`. Both have the metadata `view`.
+  - `Scenes` is unchanged (every view, in the order they were composited); its doc now says so and points to `ViewScenes`.
+- **Main files:** `gluttertest/tester.go`; `gluttertest/view_golden_test.go` and its goldens `one_window_main.png`, `one_window_report.png`.
+- **Tests:** `TestTesterTakesTheGoldenOfOneWindow` (a `WindowManager` with a registered regular window of 400x300 that draws last: `Screenshot` and `ScreenshotView(ImplicitViewID)` show the main window's swatch at 800x600, `ScreenshotView` of the window shows its own at 400x300); `TestTesterMatchesTheGoldenOfOneWindow` (both goldens, looked at); `TestScreenshotViewErrors` (five routes). One pattern selects the issue: `-run GoldenOfOneWindow`. No reproduction in `internal/issues`: the issue is in the test package, and its test runs in each platform's test process unchanged.
+  - Linux: ran here and passed, in both modes. With `screenshot` changed back to the last scene of any view, `Screenshot` and `ScreenshotView(ImplicitViewID)` showed the window's color and the main window's golden differed in 8400 pixels.
+  - Windows: the same tests under Wine, in both modes. Ran here and passed.
+  - Web: the same tests under Node (`scripts/test-wasm.sh`), in both modes. Ran here and passed.
+  - Android and iOS: none (no test process of an app runs there). macOS: step 63.1, for the Mac.
+- **Checks:** gofmt; `go vet` (Linux, wasm, windows/amd64); `golangci-lint run` (Linux; Windows amd64 and arm64, with and without `glutter_wine`: 0 issues); the race tests in both modes; `CGO_ENABLED=0` build and tests; the wasm build and `scripts/test-wasm.sh` in both modes; `scripts/check-android.sh`; the windows/amd64 and windows/arm64 builds; `scripts/test-windows.sh` in both modes; errcheck (0 violations, 21 accepted; its iOS pass is the Mac's), apicheck (0 violations, 61 accepted) and uintptrcheck (0 violations, 1 accepted). All pass; nothing was left running.
+- **Release:** **1.17.17** (`v1.17.17` on this step's commit): the app's issue.
+- **Proof:** none (the goldens are the tests'). **Manual checks:** MANUAL-CHECKS 62.1 (the app that reported it).
+- **Deviations and follow-ups:** none from Flutter (`matchesGoldenFile` takes a finder; Glutter's goldens are of a whole view). SPEC §12.10, §17 ("decided in step 62.1"); README (1.17.17). M63 (step 63.1) runs the tests on macOS.

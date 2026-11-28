@@ -5165,3 +5165,32 @@ This milestone is for the agent on the owner's Mac (Apple silicon; rule 8 has th
 **Tests:** **macOS:** `TestMacOSTellsWhetherTheDesktopShowsTrayIcons`. **Simulator tests:** `iostest.TestIOSTellsWhetherTheDesktopShowsTrayIcons`. The checks "On a Mac" of rule 8.
 **Proof:** none. **Manual checks:** none.
 **Done when:** the default "Done when" with the checks "On a Mac", and the tests pass there. No version unless the library changes.
+
+## M62: Fixes found by an app: a golden of one window (1.17.17)
+
+This milestone is for the Linux machine. On 2026-11-28 the owner passed on an entry of an app's list of Glutter issues: "A golden of one window while others are open". It is true: `gluttertest.Tester.MatchesGolden` and `Screenshot` rendered the last scene that was composited, of any view, and each frame draws every view, the windows of a `WindowRegistry` after the implicit view, so while a window of a `WindowManager` was open a golden never showed the main window; and a test could not turn the scenes of one view (`ViewScenes`) into a golden, because the renderer and the golden check are internal. The fix is in `gluttertest`, which runs in the test process on the developer's machine, so its tests run wherever a test process runs here (Linux; Windows under Wine; WebAssembly under Node); Android and iOS run no test process of an app, and macOS's is step 63.1, the Mac's.
+
+### 62.1 A golden of one window while others are open
+**Goal:** `Screenshot` and `MatchesGolden` render the implicit view's last scene whatever other windows are open, and `Tester.ScreenshotView(view ui.ViewID)` and `Tester.MatchesViewGolden(view ui.ViewID, name string)` render another view's (a window by the ID of its controller's `RootView`), at that view's present size.
+**Why:** the app's issue. Its test of the main window's golden (`internal/gui/gui_test.go`, `mainGolden`) had to destroy the report windows first, as their user would close them, and check through `ViewScenes` that the main window drew last; and it had no way to take the golden of a report window.
+**Read:** SPEC §12.10 (the row "`gluttertest` has one view"), §17 (widget tests, golden tests); `gluttertest/tester.go` (`Screenshot`, `MatchesGolden`), `gluttertest/windows.go` (`ViewScenes`), `internal/renderhost/renderhost.go` (`RenderView`, `ScenesOf`), `widgets/window_manager.go`.
+**Tasks:** (done in the step) `Screenshot` renders the last scene of `ui.ImplicitViewID` at the tester's physical size; `ScreenshotView` renders the last scene of the view at the physical size of the dispatcher's view; it fails the test with `ScreenshotViewUnknown` (metadata `view`) when no view has the ID (never made, or its window destroyed), and both fail with `ScreenshotNoFrame` (metadata `view`) when the view drew no frame yet; `MatchesViewGolden` checks `ScreenshotView`'s image against `testdata/goldens/<name>.png`. `Scenes` keeps every view's scenes in order (its doc says so). SPEC §12.10, §17 ("decided in step 62.1"); README (1.17.17); `docs/MANUAL-CHECKS.md` section 62.1. No reproduction in `internal/issues`: the issue is in the test package itself, and its test runs in each platform's test process unchanged. One pattern selects the issue: `-run GoldenOfOneWindow`.
+**Tests:** `gluttertest.TestTesterTakesTheGoldenOfOneWindow` (a `WindowManager` with a regular window of 400x300 that draws after the implicit view: `Screenshot` and `ScreenshotView(ImplicitViewID)` show the main window at 800x600, `ScreenshotView` of the window shows the window at 400x300), `TestTesterMatchesTheGoldenOfOneWindow` (the goldens `one_window_main` and `one_window_report`), `TestScreenshotViewErrors` (routes: a view never made, a destroyed window, a window that drew no frame, `MatchesViewGolden`, `Screenshot` without a frame). **Wine tests:** the same tests under Wine, in both modes (`GOOS=windows`, `-exec "$PWD/scripts/wine-exec.sh" -p 1 -run 'GoldenOfOneWindow|ScreenshotView' ./gluttertest`). **Web:** the same under Node (`scripts/test-wasm.sh` in both modes). **Display, emulator, browser tests:** none (no display; the fake runs in the test process).
+**Proof:** none (the goldens are of the tests). **Manual checks:** `docs/MANUAL-CHECKS.md` section 62.1.
+**Done when:** the default "Done when". Release **1.17.17** (`v1.17.17` on the commit of `step-62.1`), and M62 is published.
+
+## M63: The issue of M62 on the Mac
+
+This milestone is for the agent on the owner's Mac (Apple silicon; rule 8 has the list "On a Mac"): the Linux machine cannot do it, and its agent stops before it. It has the tests of a fixed issue for the platforms that only a Mac runs (the owner's rule of 2026-11-15: a test is written on the machine that can run it; SPEC §17). M62 is published first, so the Mac has the fix.
+
+### 63.1 A golden of one window while others are open, on macOS
+**Goal:** the tests of step 62.1 pass in the test process on macOS (darwin/arm64).
+**Why:** 62.1 changed `gluttertest`, plain Go that the test process of every desktop runs; it ran on Linux, under Wine and under Node. The goldens are drawn by the software renderer, so they must match on the Mac too, and the Mac's test process pins the Apple target platform (`pinApplePlatform`), which the window controllers see. iOS runs no test process of an app, so it is not part of this step.
+**Read:** step 62.1 and its entry in `docs/IMPLEMENTED.md`; `gluttertest/tester.go` (`screenshot`), `gluttertest/view_golden_test.go`; SPEC §17.
+**Tasks:**
+1. Run the tests of `./gluttertest` with `-race -run 'GoldenOfOneWindow|ScreenshotView|Golden' -v`, and again with `-tags debug_mode`. Nothing is written: the tests exist.
+2. A failure is a finding: if the test is wrong, fix the test; if a golden differs on the Mac, or a window cannot be made with the Mac's target platform, fix `gluttertest` or the library, with a version. Never rewrite a golden to make the Mac pass without finding why it differs.
+3. Record the result in section 62.1 of `docs/MANUAL-CHECKS.md` and in `docs/IMPLEMENTED.md`'s entry of this step.
+**Tests:** **macOS:** `gluttertest.TestTesterTakesTheGoldenOfOneWindow`, `TestTesterMatchesTheGoldenOfOneWindow`, `TestScreenshotViewErrors`, in both modes. The checks "On a Mac" of rule 8.
+**Proof:** none. **Manual checks:** none.
+**Done when:** the default "Done when" with the checks "On a Mac", and the tests pass there. No version unless the library changes.
